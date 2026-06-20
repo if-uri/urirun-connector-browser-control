@@ -1,0 +1,21 @@
+services:
+  fake-browser:
+    image: python:3.13-slim
+    working_dir: /app
+    volumes:
+      - ./docker:/app:ro
+    command: ["python", "fake_browser.py"]
+    networks: [connector-test]
+
+  tester:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      BROWSER_CONTROL_ENDPOINT: http://fake-browser:8765
+    depends_on:
+      - fake-browser
+    networks: [connector-test]
+
+networks:
+  connector-test:

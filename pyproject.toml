@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "urirun-connector-browser-control"
+version = "0.1.0"
+description = "Browser Control connector for ifuri and urirun"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "if-uri" }]
+dependencies = [
+  "urirun @ git+https://github.com/tellmesh/urirun.git@v0.3.14#subdirectory=adapters/python",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://connect.ifuri.com/connectors/browser-control"
+Repository = "https://github.com/if-uri/urirun-connector-browser-control"
+
+[project.scripts]
+urirun-browser-control = "urirun_connector_browser_control.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["urirun_connector_browser_control*"]
+
+[tool.setuptools.package-data]
+urirun_connector_browser_control = ["connector.manifest.json"]

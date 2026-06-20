@@ -1,0 +1,60 @@
+{
+  "id": "browser-control",
+  "name": "Browser Control",
+  "status": "available",
+  "category": "Automation",
+  "summary": "Drive browser/noVNC actions through browser:// URI commands for demos and QA.",
+  "description": "Browser Control exposes browser actions as URI commands. By default it is safe and does not open the physical host browser; set BROWSER_CONTROL_ENDPOINT or URI_SERVICE_MAP to forward commands to a noVNC or urirun node.",
+  "uriSchemes": [
+    "browser"
+  ],
+  "routes": [
+    "browser://desktop/page/command/open",
+    "browser://desktop/page/command/screenshot"
+  ],
+  "adapterKinds": [
+    "command"
+  ],
+  "examples": [
+    {
+      "title": "Open a page",
+      "uri": "browser://desktop/page/command/open",
+      "payload": {
+        "url": "https://example.com/"
+      }
+    },
+    {
+      "title": "Screenshot a page",
+      "uri": "browser://desktop/page/command/screenshot",
+      "payload": {
+        "url": "https://example.com/",
+        "output": "example.png"
+      }
+    }
+  ],
+  "flowExample": [
+    "browser://desktop/page/command/open",
+    "browser://desktop/page/command/screenshot"
+  ],
+  "requires": [
+    "browser runtime or noVNC urirun node"
+  ],
+  "install": {
+    "mode": "urirun-extra",
+    "pipSpec": "urirun-connector-browser-control @ git+https://github.com/if-uri/urirun-connector-browser-control.git@v0.1.0"
+  },
+  "docsUrl": "https://github.com/if-uri/urirun-connector-browser-control",
+  "keywords": [
+    "browser",
+    "screenshot",
+    "QA",
+    "noVNC",
+    "automation"
+  ],
+  "provenance": "verified",
+  "publisher": {
+    "name": "if-uri",
+    "url": "https://ifuri.com",
+    "github": "https://github.com/if-uri"
+  }
+}
