@@ -1,3 +1,6 @@
+# Author: Tom Sapletta · https://tom.sapletta.com
+# Part of the ifURI solution.
+
 from .core import (
     CONNECTOR_ID,
     ROUTE_OPEN,
