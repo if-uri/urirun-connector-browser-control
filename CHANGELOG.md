@@ -3,10 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- Add structure-audit follow-up tasks for the full host-node Docker matrix and
+  richer connector contract page.
 - Add connector TODO for noVNC flow integration, hub installer smoke and
   remote-node browser routing docs.
 - Link README to the public connector hub page, noVNC example and current
   cross-repository work summary.
+
+### Changed
+- Point active runtime dependency and docs links at `github.com/if-uri/urirun`.
 
 ## [0.1.1] - 2026-06-20
 

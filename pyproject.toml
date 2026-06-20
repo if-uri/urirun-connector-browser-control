@@ -24,6 +24,9 @@ Repository = "https://github.com/if-uri/urirun-connector-browser-control"
 [project.scripts]
 urirun-browser-control = "urirun_connector_browser_control.cli:main"
 
+[project.entry-points."urirun.bindings"]
+browser-control = "urirun_connector_browser_control:urirun_bindings"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["urirun_connector_browser_control*"]
