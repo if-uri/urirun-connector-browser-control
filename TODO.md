@@ -2,6 +2,8 @@
 
 ## Connector roadmap
 
+- [x] Expose `urirun_bindings()` through the stable `urirun.bindings`
+      entry-point group.
 - [ ] Add this connector to IFURI-016 full host-node Docker matrix: install from
       hub/GitHub pin, execute `browser://` on a noVNC node, capture screenshot
       and publish logs/results.

@@ -50,6 +50,14 @@ urirun run browser://desktop/page/command/open browser.registry.json \
   --allow 'browser://desktop/*'
 ```
 
+After installation, `urirun` can discover this connector automatically through
+the `urirun.bindings` entry-point group:
+
+```bash
+urirun discover --out connectors.bindings.json --registry-out connectors.registry.json
+urirun list --entry-points
+```
+
 ## Related projects
 
 - Runtime: [if-uri/urirun](https://github.com/if-uri/urirun)

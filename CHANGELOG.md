@@ -9,6 +9,8 @@
   remote-node browser routing docs.
 - Link README to the public connector hub page, noVNC example and current
   cross-repository work summary.
+- Expose `urirun_bindings()` through the `urirun.bindings` entry-point group
+  and document `urirun discover` / `urirun list --entry-points`.
 
 ### Changed
 - Point active runtime dependency and docs links at `github.com/if-uri/urirun`.
