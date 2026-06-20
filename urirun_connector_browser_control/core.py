@@ -9,7 +9,6 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
-from importlib import resources
 from typing import Any
 
 import urirun
@@ -20,16 +19,8 @@ ROUTE_OPEN = "browser://desktop/page/command/open"
 ROUTE_SCREENSHOT = "browser://desktop/page/command/screenshot"
 
 
-def _json_resource(name: str) -> dict[str, Any]:
-    text = resources.files(__package__).joinpath(name).read_text(encoding="utf-8")
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError(f"{name} must contain a JSON object")
-    return data
-
-
 def connector_manifest() -> dict[str, Any]:
-    return _json_resource("connector.manifest.json")
+    return urirun.load_manifest(__package__)
 
 
 def _target_endpoint(target: str) -> str | None:
