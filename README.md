@@ -53,6 +53,8 @@ urirun run browser://desktop/page/command/open browser.registry.json \
 ## Related projects
 
 - Runtime: [tellmesh/urirun](https://github.com/tellmesh/urirun)
+- Docs: [docs.ifuri.com/connectors.html](https://docs.ifuri.com/connectors.html) · [authoring a connector](https://docs.ifuri.com/connector-authoring.html)
+- Hub page: [connect.ifuri.com/connectors/browser-control](https://connect.ifuri.com/connectors/browser-control)
 - Connector hub: [connect.ifuri.com](https://connect.ifuri.com)
 - noVNC example: [if-uri/examples/11-novnc_lan_flow](https://github.com/if-uri/examples/tree/main/11-novnc_lan_flow)
 - Current work summary:
