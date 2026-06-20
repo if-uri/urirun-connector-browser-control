@@ -15,6 +15,6 @@
 ## Related resources
 
 - Hub page: https://connect.ifuri.com/connectors/browser-control
-- Runtime: https://github.com/tellmesh/urirun
+- Runtime: https://github.com/if-uri/urirun
 - Examples: https://github.com/if-uri/examples
 - Work summary: https://github.com/if-uri/docs/blob/main/work-summary-2026-06-20.md

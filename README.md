@@ -1,6 +1,6 @@
 # urirun-connector-browser-control
 
-Browser Control connector for [ifURI](https://ifuri.com) / [urirun](https://github.com/tellmesh/urirun).
+Browser Control connector for [ifURI](https://ifuri.com) / [urirun](https://github.com/if-uri/urirun).
 
 Public hub page:
 [connect.ifuri.com/connectors/browser-control](https://connect.ifuri.com/connectors/browser-control)
@@ -52,7 +52,7 @@ urirun run browser://desktop/page/command/open browser.registry.json \
 
 ## Related projects
 
-- Runtime: [tellmesh/urirun](https://github.com/tellmesh/urirun)
+- Runtime: [if-uri/urirun](https://github.com/if-uri/urirun)
 - Docs: [docs.ifuri.com/connectors.html](https://docs.ifuri.com/connectors.html) · [authoring a connector](https://docs.ifuri.com/connector-authoring.html)
 - Hub page: [connect.ifuri.com/connectors/browser-control](https://connect.ifuri.com/connectors/browser-control)
 - Connector hub: [connect.ifuri.com](https://connect.ifuri.com)

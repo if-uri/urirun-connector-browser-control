@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "if-uri" }]
 dependencies = [
-  "urirun @ git+https://github.com/tellmesh/urirun.git@v0.3.14#subdirectory=adapters/python",
+  "urirun @ git+https://github.com/if-uri/urirun.git@v0.3.14#subdirectory=adapters/python",
 ]
 
 [project.optional-dependencies]
