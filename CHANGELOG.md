@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Add connector TODO for noVNC flow integration, hub installer smoke and
+  remote-node browser routing docs.
+- Link README to the public connector hub page, noVNC example and current
+  cross-repository work summary.
+
 ## [0.1.1] - 2026-06-20
 
 ### Fixed

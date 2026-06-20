@@ -2,6 +2,9 @@
 
 Browser Control connector for [ifURI](https://ifuri.com) / [urirun](https://github.com/tellmesh/urirun).
 
+Public hub page:
+[connect.ifuri.com/connectors/browser-control](https://connect.ifuri.com/connectors/browser-control)
+
 It declares browser actions as URI routes:
 
 - `browser://desktop/page/command/open`
@@ -46,3 +49,13 @@ urirun run browser://desktop/page/command/open browser.registry.json \
   --execute \
   --allow 'browser://desktop/*'
 ```
+
+## Related projects
+
+- Runtime: [tellmesh/urirun](https://github.com/tellmesh/urirun)
+- Connector hub: [connect.ifuri.com](https://connect.ifuri.com)
+- noVNC example: [if-uri/examples/11-novnc_lan_flow](https://github.com/if-uri/examples/tree/main/11-novnc_lan_flow)
+- Current work summary:
+  [work-summary-2026-06-20](https://github.com/if-uri/docs/blob/main/work-summary-2026-06-20.md)
+
+Repository notes: [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md)
