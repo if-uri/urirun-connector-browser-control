@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-06-20
+
+### Fixed
+- Add `useCases` to the packaged connector manifest for connect.ifuri.com
+  catalog quality checks.
+
 ## [0.1.0] - 2026-06-20
 
 ### Added

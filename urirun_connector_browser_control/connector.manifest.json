@@ -15,6 +15,11 @@
   "adapterKinds": [
     "command"
   ],
+  "useCases": [
+    "Open pages inside a controlled noVNC demo desktop.",
+    "Capture browser screenshots as URI flow artifacts.",
+    "Run repeatable browser QA from NL-to-URI workflows."
+  ],
   "examples": [
     {
       "title": "Open a page",
@@ -41,7 +46,7 @@
   ],
   "install": {
     "mode": "urirun-extra",
-    "pipSpec": "urirun-connector-browser-control @ git+https://github.com/if-uri/urirun-connector-browser-control.git@v0.1.0"
+    "pipSpec": "urirun-connector-browser-control @ git+https://github.com/if-uri/urirun-connector-browser-control.git@v0.1.1"
   },
   "docsUrl": "https://github.com/if-uri/urirun-connector-browser-control",
   "keywords": [
