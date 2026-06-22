@@ -11,3 +11,10 @@ dist/
 .docker-smoke/
 .code2llm_cache/
 .idea/
+
+# Generated connector artifacts
+*.bindings.json
+*.registry.json
+*-screenshot.png
+page.png
+reg-shot.png

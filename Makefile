@@ -8,15 +8,15 @@ test: ## Run connector tests
 
 .PHONY: smoke
 smoke: ## Run CLI smoke without opening a local browser
-	python3 -m urirun_connector_browser_control.cli open https://example.com/
+	urirun-browser-control open https://example.com/
 
 .PHONY: manifest
 manifest: ## Print connector manifest
-	python3 -m urirun_connector_browser_control.cli manifest
+	urirun-browser-control manifest
 
 .PHONY: bindings
 bindings: ## Print urirun v2 bindings
-	python3 -m urirun_connector_browser_control.cli bindings
+	urirun-browser-control bindings
 
 .PHONY: docker-test
 docker-test: ## Run connector in Docker against a fake browser endpoint plus MCP/A2A projection

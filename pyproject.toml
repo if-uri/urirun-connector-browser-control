@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "if-uri" }]
 dependencies = [
-  "urirun @ git+https://github.com/if-uri/urirun.git@v0.3.14#subdirectory=adapters/python",
+  "urirun @ git+https://github.com/if-uri/urirun.git#subdirectory=adapters/python",
 ]
 
 [project.optional-dependencies]
@@ -22,10 +22,10 @@ Homepage = "https://connect.ifuri.com/connectors/browser-control"
 Repository = "https://github.com/if-uri/urirun-connector-browser-control"
 
 [project.scripts]
-urirun-browser-control = "urirun_connector_browser_control.cli:main"
+urirun-browser-control = "urirun_connector_browser_control.core:main"
 
 [project.entry-points."urirun.bindings"]
-browser-control = "urirun_connector_browser_control:urirun_bindings"
+browser-control = "urirun_connector_browser_control.core:urirun_bindings"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- Local headless Chrome routes under the `chrome` target: `browser://chrome/page/query/dom`,
+  `.../query/text` and `.../command/screenshot`. Read-only DOM/text queries and
+  screenshots via `chrome --headless`, with a safe dry-run when no Chrome is
+  installed. Complements the existing noVNC-forwarding `desktop` target.
+
+### Added
 - Add structure-audit follow-up tasks for the full host-node Docker matrix and
   richer connector contract page.
 - Add connector TODO for noVNC flow integration, hub installer smoke and

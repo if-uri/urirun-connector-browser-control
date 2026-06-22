@@ -8,13 +8,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from urirun_connector_browser_control import (
-    ROUTE_OPEN,
-    ROUTE_SCREENSHOT,
     capture_screenshot,
     connector_manifest,
     open_page,
     urirun_bindings,
 )
+
+ROUTE_OPEN = "browser://desktop/page/command/open"
+ROUTE_SCREENSHOT = "browser://desktop/page/command/screenshot"
 
 
 class FakeBrowserHandler(BaseHTTPRequestHandler):
@@ -47,12 +48,27 @@ def test_manifest_and_bindings_share_routes():
     manifest = connector_manifest()
     bindings = urirun_bindings()
 
+    chrome_routes = {
+        "browser://chrome/page/query/dom",
+        "browser://chrome/page/query/text",
+        "browser://chrome/page/command/screenshot",
+    }
+    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes
     assert manifest["id"] == "browser-control"
     assert manifest["status"] == "available"
-    assert manifest["routes"] == [ROUTE_OPEN, ROUTE_SCREENSHOT]
-    assert set(bindings["bindings"]) == {ROUTE_OPEN, ROUTE_SCREENSHOT}
+    assert set(manifest["routes"]) == expected
+    assert set(bindings["bindings"]) == expected
     assert bindings["bindings"][ROUTE_OPEN]["meta"]["connector"] == "browser-control"
-    assert bindings["bindings"][ROUTE_SCREENSHOT]["meta"]["connector"] == "browser-control"
+    assert chrome_routes <= set(bindings["bindings"])
+
+
+def test_chrome_routes_dry_run_without_chrome(monkeypatch):
+    from urirun_connector_browser_control import core
+
+    monkeypatch.setattr(core, "_chrome_bin", lambda: None)
+    dom = core.chrome_dom("https://example.com")
+    assert dom["ok"] is True and dom["executed"] is False and dom["backend"] == "none"
+    assert core.chrome_dom("")["ok"] is False  # url required
 
 
 def test_safe_default_does_not_open_local_browser(monkeypatch):

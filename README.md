@@ -38,25 +38,37 @@ urirun-browser-control bindings
 urirun-browser-control manifest
 ```
 
-## Registry
+## Run it (install, then run)
+
+On installation the connector registers under the `urirun.bindings` entry-point
+group, so urirun auto-discovers it — no compile step and no registry file. Two
+declarations: what to install, and what to run.
 
 ```bash
-urirun-browser-control bindings > browser.bindings.json
-urirun validate browser.bindings.json
-urirun compile browser.bindings.json --out browser.registry.json
-urirun run browser://desktop/page/command/open browser.registry.json \
+urirun install urirun-connector-browser-control   # local dev: pip install -e .
+urirun run 'browser://desktop/page/command/open' \
   --payload '{"url":"https://example.com/"}' \
-  --execute \
-  --allow 'browser://desktop/*'
+  --execute --allow 'browser://desktop/*'
 ```
 
-After installation, `urirun` can discover this connector automatically through
-the `urirun.bindings` entry-point group:
+Inspect the live runtime over the same URI contract (routes are discoverable, not
+just runnable — `registry://` is built in, alongside `error://`/`log://`):
 
 ```bash
-urirun discover --out connectors.bindings.json --registry-out connectors.registry.json
-urirun list --entry-points
+urirun list                                              # every installed route + builtins
+urirun run 'registry://local/routes/query/list' --execute --allow 'registry://*'
 ```
+
+> Auto-discovery, the `urirun install` alias and the `registry://` builtins need
+> **urirun ≥ 0.4.4**. On older urirun, compile an explicit registry first:
+>
+> ```bash
+> urirun-browser-control bindings > browser.bindings.json
+> urirun validate browser.bindings.json
+> urirun compile browser.bindings.json --out browser.registry.json
+> urirun run browser://desktop/page/command/open browser.registry.json \
+>   --payload '{"url":"https://example.com/"}' --execute --allow 'browser://desktop/*'
+> ```
 
 ## Related projects
 
@@ -73,3 +85,7 @@ Repository notes: [TODO.md](TODO.md) · [CHANGELOG.md](CHANGELOG.md)
 ## License
 
 Released under the terms in [LICENSE](LICENSE).
+
+## Examples
+
+Runnable walkthrough: [`examples/`](examples/) — `./examples/read-and-screenshot.sh`.

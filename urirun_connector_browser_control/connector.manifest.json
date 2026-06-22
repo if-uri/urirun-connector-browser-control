@@ -3,43 +3,12 @@
   "name": "Browser Control",
   "status": "available",
   "category": "Automation",
-  "summary": "Drive browser/noVNC actions through browser:// URI commands for demos and QA.",
-  "description": "Browser Control exposes browser actions as URI commands. By default it is safe and does not open the physical host browser; set BROWSER_CONTROL_ENDPOINT or URI_SERVICE_MAP to forward commands to a noVNC or urirun node.",
-  "uriSchemes": [
-    "browser"
-  ],
-  "routes": [
-    "browser://desktop/page/command/open",
-    "browser://desktop/page/command/screenshot"
-  ],
-  "adapterKinds": [
-    "command"
-  ],
+  "summary": "Drive browser actions through browser:// URI commands: forward to a noVNC/urirun node (desktop) or read/screenshot locally with headless Chrome.",
+  "description": "Browser Control exposes browser actions as URI commands. The desktop target forwards to a noVNC or urirun node (BROWSER_CONTROL_ENDPOINT / URI_SERVICE_MAP). The chrome target drives a local headless Chrome/Chromium for read-only DOM/text queries and screenshots, with a safe dry-run when no Chrome is installed.",
   "useCases": [
     "Open pages inside a controlled noVNC demo desktop.",
     "Capture browser screenshots as URI flow artifacts.",
     "Run repeatable browser QA from NL-to-URI workflows."
-  ],
-  "examples": [
-    {
-      "title": "Open a page",
-      "uri": "browser://desktop/page/command/open",
-      "payload": {
-        "url": "https://example.com/"
-      }
-    },
-    {
-      "title": "Screenshot a page",
-      "uri": "browser://desktop/page/command/screenshot",
-      "payload": {
-        "url": "https://example.com/",
-        "output": "example.png"
-      }
-    }
-  ],
-  "flowExample": [
-    "browser://desktop/page/command/open",
-    "browser://desktop/page/command/screenshot"
   ],
   "requires": [
     "browser runtime or noVNC urirun node"
