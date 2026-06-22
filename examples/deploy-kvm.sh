@@ -25,6 +25,10 @@ urirun host deploy "$HOST" --identity "$IDENTITY" \
   --allow "browser://${NODE}/**"
 
 echo
+case "$HOST" in
+  *:*) URL="http://$HOST" ;;
+  *)   URL="http://$HOST:8765" ;;   # default urirun port when none given
+esac
 echo "Probe the desktop (what GUI control is available on the node):"
-echo "  curl -s -X POST http://${HOST%:*}:${HOST#*:}/run -H 'Content-Type: application/json' \\"
+echo "  curl -s -X POST $URL/run -H 'Content-Type: application/json' \\"
 echo "    -d '{\"uri\":\"browser://${NODE}/kvm/session/query/probe\",\"payload\":{}}'"
