@@ -82,23 +82,87 @@ def _ensure_tellmesh_path() -> None:
             sys.path.insert(0, str(p))
 
 
-def _tm(module: str, func: str, payload: dict) -> dict:
+def _tm(module: str, func: str, payload: dict) -> dict | None:
     """Call a tellmesh handler ``fn(payload, context)`` by ``module:func`` (reusing a
-    persistent context). Returns a clean error dict if the module isn't importable."""
+    persistent context). Returns ``None`` when the module isn't importable so the caller
+    can fall back to the bare OS tools (xdotool/ydotool/grim/…)."""
     try:
         fn = getattr(importlib.import_module(module), func)
     except Exception:
         _ensure_tellmesh_path()
         try:
             fn = getattr(importlib.import_module(module), func)
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": f"tellmesh '{module}' not importable: {exc}",
-                    "hint": "pip install the tellmesh pack, or set TELLMESH_DIR to a checkout"}
+        except Exception:
+            return None
     try:
         out = fn(payload, _TM_CTX)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{module}.{func} failed: {exc}"}
     return out if isinstance(out, dict) else {"ok": True, "result": out}
+
+
+# --- bare OS-tool layer: the same tools tellmesh wraps, so KVM control works even on a
+# node WITHOUT the tellmesh packs. Wayland-first (ydotool/grim) then X11 (xdotool/import).
+
+def _wayland() -> bool:
+    return bool(os.environ.get("WAYLAND_DISPLAY")) and not os.environ.get("DISPLAY")
+
+
+def _input_tool() -> str | None:
+    """ydotool drives both Wayland and X11; xdotool is X11-only."""
+    if shutil.which("ydotool"):
+        return "ydotool"
+    if shutil.which("xdotool") and not _wayland():
+        return "xdotool"
+    return None
+
+
+def _run(cmd: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def _os_type(text: str) -> dict[str, Any]:
+    tool = _input_tool()
+    if not tool:
+        return {"ok": False, "error": "no input tool (install ydotool for Wayland, or xdotool for X11)"}
+    r = _run([tool, "type", text])
+    return {"ok": r.returncode == 0, "via": tool, "typed": text}
+
+
+def _os_key(combo: str) -> dict[str, Any]:
+    tool = _input_tool()
+    if not tool:
+        return {"ok": False, "error": "no input tool (install ydotool/xdotool)"}
+    r = _run([tool, "key", combo])
+    return {"ok": r.returncode == 0, "via": tool, "keys": combo}
+
+
+def _os_click(x: int, y: int, button: str) -> dict[str, Any]:
+    if shutil.which("xdotool") and not _wayland():
+        r = _run(["xdotool", "mousemove", str(x), str(y), "click",
+                  {"left": "1", "middle": "2", "right": "3"}.get(button, "1")])
+        return {"ok": r.returncode == 0, "via": "xdotool", "x": x, "y": y, "button": button}
+    return {"ok": False, "error": "coordinate click needs xdotool (X11); on Wayland use page/command/click-text"}
+
+
+def _os_screenshot() -> dict[str, Any]:
+    import base64
+    path = f"/tmp/urirun-browser-shot-{os.getpid()}.png"
+    # X11-native / Wayland-native tools first (no session DBus, won't hang in a service);
+    # gnome-screenshot/spectacle need a portal+session bus, so try them last.
+    for cmd in (["grim", path], ["import", "-window", "root", path], ["scrot", "-o", path],
+                ["maim", path], ["gnome-screenshot", "-f", path], ["spectacle", "-b", "-n", "-o", path]):
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            _run(cmd, timeout=8)
+        except Exception:  # noqa: BLE001 - a tool hung/failed; try the next
+            continue
+        if os.path.exists(path):
+            data = Path(path).read_bytes()
+            return {"ok": True, "via": cmd[0], "path": path, "bytes": len(data),
+                    "base64_head": base64.b64encode(data).decode()[:60]}
+    return {"ok": False, "error": "no working screenshot tool (grim/import/scrot/maim/gnome-screenshot)"}
 
 
 # --- remote-forward transport (real logic) --------------------------------
@@ -218,76 +282,87 @@ def chrome_screenshot(url: str = "", output: str = "chrome-screenshot.png") -> d
             "url": url, "output": output, "saved": saved}
 
 
-# --- KVM routes: drive ANY browser by GUI, via the tellmesh modules ---------
-# launch with the connector's own browser-agnostic lookup; everything else (keyboard,
-# mouse, screenshot, OCR-click) delegates to tellmesh urihim/urikvm so the SAME control
-# surface works for firefox, chrome, brave, edge, … and their plugins/logins.
+# --- KVM routes: drive ANY browser by GUI ----------------------------------
+# launch uses the connector's browser-agnostic lookup; keyboard/mouse/screen/OCR prefer
+# the tellmesh urihim/urikvm handlers (which abstract X11 *and* Wayland), and fall back to
+# the bare OS tools (ydotool/xdotool, grim/import) when tellmesh isn't on the node — so the
+# SAME control surface works for firefox, chrome, brave, edge, … with or without tellmesh.
+
+def _tag(d: dict, **extra) -> dict[str, Any]:
+    return {"connector": CONNECTOR_ID, "target": "kvm", **extra, **d}
+
 
 @KVM.handler("session/command/launch", isolated=True, meta={"label": "Launch any browser (firefox/chrome/…)"})
 def launch(browser: str = "firefox", url: str = "") -> dict[str, Any]:
     """Launch a visible browser window (browser-agnostic) on the node's desktop."""
     binpath = _browser_bin(browser)
     if not binpath:
-        return {"ok": False, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser,
-                "error": f"no binary for browser {browser!r}", "tried": list(_BROWSERS.get(browser, (browser,)))}
+        return _tag({"ok": False, "error": f"no binary for browser {browser!r}",
+                     "tried": list(_BROWSERS.get(browser, (browser,)))}, browser=browser)
     if not _has_display():
-        return {"ok": False, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser, "binary": binpath,
-                "error": "no DISPLAY/WAYLAND_DISPLAY — a GUI browser needs a desktop session"}
+        return _tag({"ok": False, "binary": binpath,
+                     "error": "no DISPLAY/WAYLAND_DISPLAY — a GUI browser needs a desktop session"}, browser=browser)
     proc = subprocess.Popen([binpath, *([url] if url else [])])
-    return {"ok": True, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser,
-            "binary": binpath, "pid": proc.pid, "url": url}
-
-
-@KVM.handler("page/command/navigate", isolated=True, meta={"label": "Navigate (focus address bar, type URL, Enter)"})
-def navigate(url: str, enter: bool = True) -> dict[str, Any]:
-    """Browser-agnostic navigate via the keyboard: Ctrl+L → type URL → Enter (urihim)."""
-    steps = {"focus": _tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "l"]}),
-             "type": _tm("urihim.handlers", "keyboard_type", {"text": url})}
-    if enter:
-        steps["enter"] = _tm("urihim.handlers", "keyboard_key", {"key": "enter"})
-    return {"ok": all(s.get("ok", False) for s in steps.values()), "connector": CONNECTOR_ID,
-            "target": "kvm", "url": url, "steps": steps}
+    return _tag({"ok": True, "binary": binpath, "pid": proc.pid, "url": url}, browser=browser)
 
 
 @KVM.handler("input/command/type", isolated=True, meta={"label": "Type text into the focused field"})
 def type_text(text: str, enter: bool = False) -> dict[str, Any]:
     res = _tm("urihim.handlers", "keyboard_type", {"text": text})
+    via = "tellmesh"
+    if res is None:                                   # no tellmesh → bare OS tool
+        res, via = _os_type(text), None
     if enter and res.get("ok"):
-        res["enter"] = _tm("urihim.handlers", "keyboard_key", {"key": "enter"})
-    return {"connector": CONNECTOR_ID, "target": "kvm", **res}
+        res["enter"] = (_tm("urihim.handlers", "keyboard_key", {"key": "enter"}) or _os_key("Return"))
+    return _tag(res, **({"via": via} if via else {}))
 
 
 @KVM.handler("input/command/hotkey", isolated=True, meta={"label": "Press a keyboard shortcut"})
 def hotkey(keys: list[str]) -> dict[str, Any]:
-    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urihim.handlers", "keyboard_hotkey", {"keys": keys})}
+    res = _tm("urihim.handlers", "keyboard_hotkey", {"keys": keys}) or _os_key("+".join(keys))
+    return _tag(res)
+
+
+@KVM.handler("page/command/navigate", isolated=True, meta={"label": "Navigate (focus address bar, type URL, Enter)"})
+def navigate(url: str, enter: bool = True) -> dict[str, Any]:
+    """Browser-agnostic navigate via the keyboard: Ctrl+L → type URL → Enter."""
+    steps = {"focus": hotkey(["ctrl", "l"]), "type": type_text(url)}
+    if enter:
+        steps["enter"] = (_tm("urihim.handlers", "keyboard_key", {"key": "enter"}) or _os_key("Return"))
+    return _tag({"ok": all(s.get("ok", False) for s in steps.values()), "url": url, "steps": steps})
 
 
 @KVM.handler("input/command/click", isolated=True, meta={"label": "Click at screen coordinates"})
 def click(x: int, y: int, button: str = "left") -> dict[str, Any]:
-    return {"connector": CONNECTOR_ID, "target": "kvm",
-            **_tm("urihim.handlers", "mouse_click", {"x": x, "y": y, "button": button})}
+    res = _tm("urihim.handlers", "mouse_click", {"x": x, "y": y, "button": button}) or _os_click(x, y, button)
+    return _tag(res)
 
 
 @KVM.handler("page/command/click-text", isolated=True, meta={"label": "Click an on-screen label (OCR)"})
 def click_text(text: str) -> dict[str, Any]:
     """OCR-locate a visible label and click it — works on any browser's chrome/content."""
-    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urikvm.handlers", "click_text", {"text": text})}
+    res = _tm("urikvm.handlers", "click_text", {"text": text})
+    if res is None:
+        res = {"ok": False, "error": "click-text needs tellmesh urikvm (OCR) or tesseract on the node"}
+    return _tag(res)
 
 
 @KVM.handler("screen/query/capture", isolated=True, meta={"label": "Capture the screen (any browser visible)"})
 def capture(monitor: int = 0) -> dict[str, Any]:
-    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urikvm.handlers", "screenshot", {"monitor": monitor})}
+    res = _tm("urikvm.handlers", "screenshot", {"monitor": monitor}) or _os_screenshot()
+    return _tag(res)
 
 
 @KVM.handler("session/command/close", isolated=True, meta={"label": "Close the active browser tab/window"})
 def close(hard: bool = False, browser: str = "") -> dict[str, Any]:
-    """Close the active tab (Ctrl+W via urihim), or kill the browser process if hard."""
+    """Close the active tab (Ctrl+W), or kill the browser process if hard."""
     if hard and browser:
         binpath = _browser_bin(browser)
         name = Path(binpath).name if binpath else browser
         subprocess.run(["pkill", "-f", name], capture_output=True)
-        return {"ok": True, "connector": CONNECTOR_ID, "target": "kvm", "killed": name}
-    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "w"]})}
+        return _tag({"ok": True, "killed": name})
+    res = _tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "w"]}) or _os_key("ctrl+w")
+    return _tag(res)
 
 
 # authoring surface — all derived from the declared @handlers, zero boilerplate.

@@ -25,10 +25,24 @@ mouse, `urikvm` screenshot + OCR-click) as the URI handlers:
 | `browser://kvm/screen/query/capture` `{monitor?}` | capture the screen | `urikvm` |
 | `browser://kvm/session/command/close` `{hard?, browser?}` | close the active tab (Ctrl+W) or kill | `urihim` |
 
-KVM routes need a **desktop session** (`DISPLAY`/`WAYLAND_DISPLAY`) and the tellmesh packs
-importable (pip-installed, or set `TELLMESH_DIR` to a checkout). Without them each route
-returns a clean error (never a crash). Set `URISYS_ALLOW_REAL=1` to actually drive the
-real mouse/keyboard (otherwise the tellmesh handlers run in mock mode).
+KVM routes need a **desktop session** on the node. For input/screenshot they prefer the
+**tellmesh** packs (`urihim`/`urikvm`, which abstract X11 *and* Wayland — pip-installed or
+`TELLMESH_DIR=<checkout>`), and **fall back to bare OS tools** when tellmesh is absent:
+
+| need | Wayland | X11 |
+|------|---------|-----|
+| keyboard / mouse | `ydotool` | `xdotool` (or `ydotool`) |
+| screenshot | `grim` | `import` (ImageMagick) / `scrot` / `maim` |
+| OCR click-text | tellmesh `urikvm` (+`tesseract`) | same |
+
+Set `URISYS_ALLOW_REAL=1` to actually drive the real mouse/keyboard (otherwise the
+tellmesh handlers run in mock mode). Any missing tool yields a clean error — never a crash.
+
+> **Wayland note.** On a GNOME/Wayland desktop, run the node **inside the user's graphical
+> session** (so it has `WAYLAND_DISPLAY` + `DBUS_SESSION_BUS_ADDRESS` + portal). A node
+> running as a detached service can launch browsers but cannot inject input or screenshot
+> via the portal (`gnome-screenshot` will block); install `ydotool`+`grim` (or tellmesh)
+> for portal-free control.
 
 ### `browser://chrome/…` — headless read/screenshot
 
