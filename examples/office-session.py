@@ -28,11 +28,39 @@ FORM = ("data:text/html," + urllib.parse.quote(
     "<p><label>Has&#322;o <input name=pass type=password value='secret'></label></p>"
     "<button>Zaloguj</button></form></body></html>"))
 IANA = "https://www.iana.org/help/example-domains"
+
+
+def _page(title: str, body: str) -> str:
+    return "data:text/html;charset=utf-8," + urllib.parse.quote(
+        f"<html><head><meta charset='utf-8'><title>{title}</title></head>"
+        f"<body style='font-family:sans-serif;padding:2rem;max-width:48rem'>{body}</body></html>")
+
+
+# A believable office day, autonomous: log into webmail, read the inbox, look something up,
+# file a ticket, write the daily note. App-like pages are self-contained data: URLs (offline-
+# safe) + one real article to read; every step is captured (DOM + screenshot).
+DAILY = [
+    ("logowanie do poczty", _page("Poczta firmowa — logowanie",
+        "<h1>Poczta firmowa</h1><form><p><label>E-mail <input name=email value='jan.kowalski@firma.pl'></label></p>"
+        "<p><label>Has&#322;o <input name=pass type=password value='********'></label></p><button>Zaloguj</button></form>")),
+    ("skrzynka odbiorcza", _page("Skrzynka odbiorcza",
+        "<h1>Skrzynka (3 nowe)</h1><ul><li><b>Szef</b> — Raport tygodniowy do pi&#261;tku</li>"
+        "<li><b>Klient ACME</b> — Pytanie o ofert&#281;</li><li><b>HR</b> — Szkolenie BHP</li></ul>")),
+    ("wyszukanie informacji", IANA),
+    ("zg&#322;oszenie do CRM", _page("CRM — nowe zg&#322;oszenie",
+        "<h1>Nowe zg&#322;oszenie</h1><form><p><label>Klient <input name=client value='ACME Sp. z o.o.'></label></p>"
+        "<p><label>Temat <input name=subject value='Oferta — pakiet Pro'></label></p>"
+        "<p><textarea name=note>Przygotowa&#263; ofert&#281; do pi&#261;tku.</textarea></p><button>Zapisz</button></form>")),
+    ("notatka dzienna", _page("Notatnik",
+        "<h1>Notatka — dzi&#347;</h1><textarea style='width:100%;height:6rem'>"
+        "1) Odpisa&#263; klientowi ACME. 2) Raport tygodniowy. 3) Zapisa&#263; si&#281; na BHP.</textarea>")),
+]
 FLOWS = {
     "login-form": [("login form", FORM)],
     "example-com": [("example.com", "https://example.com")],
     "iana": [("iana", IANA)],
     "multi": [("login form", FORM), ("example.com", "https://example.com"), ("iana", IANA)],
+    "daily": DAILY,
 }
 pages = FLOWS.get(FLOW) or [(FLOW, os.environ.get("TARGET_URL", FORM))]
 

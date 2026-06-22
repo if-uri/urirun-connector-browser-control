@@ -113,6 +113,7 @@ The flow is parameterizable via `FLOW`/`TARGET_URL`:
 NODE=laptop NODE_URL=http://192.168.188.201:8765 python3 office-session.py     # default login-form flow
 FLOW=example-com TARGET_URL=https://example.com python3 office-session.py      # any single page
 FLOW=multi python3 office-session.py                                           # multi-page flow in one session
+FLOW=daily python3 office-session.py                                           # autonomous office day (login→inbox→research→ticket→note)
 # -> ~/.urirun/laptop/session/<flow>-<UTC-ts>/  { page-N.html, screenshot-N.png, events.json, trace.json, report.md }
 # and refreshes ~/.urirun/laptop/session/INDEX.md (table of all runs: flow, steps ok, screenshot, report)
 ```
