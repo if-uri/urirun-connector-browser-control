@@ -102,7 +102,8 @@ def test_manifest_and_bindings_share_routes():
         "browser://cdp/page/query/eval",
         "browser://cdp/page/query/screenshot",
     }
-    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes | kvm_routes | cdp_routes
+    expected = ({ROUTE_OPEN, ROUTE_SCREENSHOT, "browser://desktop/system/query/browsers"}
+                | chrome_routes | kvm_routes | cdp_routes)
     assert manifest["id"] == "browser-control"
     assert manifest["status"] == "available"
     assert set(manifest["routes"]) == expected

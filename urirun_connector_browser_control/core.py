@@ -221,6 +221,20 @@ def _chrome_run(args: list[str], timeout: float = 30.0):
 
 # --- routes: one typed @handler each, run out-of-process (isolated) --------
 
+@CONNECTOR.handler("system/query/browsers", isolated=True, meta={"label": "List installed browsers", "cliAlias": "browsers"})
+def list_browsers() -> dict[str, Any]:
+    """Discover which browsers are installed on this machine — over a URI, no `shell://`.
+    Returns each known browser that is present and its resolved binary path, plus a
+    sensible default and whether a display is available (so a caller can pick a browser
+    and a headed/headless mode without probing `shell://.../which` one binary at a time."""
+    found = [{"name": name, "path": _browser_bin(name)} for name in _BROWSERS]
+    found = [b for b in found if b["path"]]
+    default = next((b["name"] for b in found if b["name"] in ("chrome", "chromium")), None) \
+        or (found[0]["name"] if found else None)
+    return {"ok": True, "connector": CONNECTOR_ID, "browsers": found,
+            "default": default, "display": _has_display()}
+
+
 @CONNECTOR.handler("page/command/open", isolated=True, meta={"label": "Open browser page"})
 def open_page(url: str, target: str = "desktop", timeout: float = 10.0) -> dict[str, Any]:
     """Open a page on a forwarded browser node, or the local host browser."""
