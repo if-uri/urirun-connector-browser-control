@@ -98,3 +98,18 @@ urirun discover | urirun gen openapi - --out openapi.json   # OpenAPI 3 (one pat
 urirun discover | urirun gen proto   - --out service.proto  # protobuf + gRPC (typed rpc per route)
 urirun discover | urirun gen client  - --out client.py      # typed Python client
 ```
+
+## Capture a node session to `~/.urirun/<node>/session/<ts>/`
+
+[`office-session.py`](office-session.py) runs an office scenario over the ready uribrowser
+pack (driver=playwright) and writes the host→node trace, the real DOM, the real
+screenshot, and a Markdown report into a per-node **session folder** you can browse:
+
+```bash
+NODE=laptop NODE_URL=http://192.168.188.201:8765 python3 office-session.py
+# -> ~/.urirun/laptop/session/<UTC-ts>/  { page.html, screenshot.png, trace.json, report.md }
+```
+
+(Note: urirun's node state lives in `~/.urirun-node/` on the node — one node per machine,
+no per-name subfolder; host-side artifacts live under `~/.urirun/`. This script adds the
+`~/.urirun/<node>/session/<ts>/` convention for browsable per-run captures.)
