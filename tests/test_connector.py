@@ -85,13 +85,24 @@ def test_manifest_and_bindings_share_routes():
         "browser://chrome/page/query/text",
         "browser://chrome/page/command/screenshot",
     }
-    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes
+    kvm_routes = {
+        "browser://kvm/session/command/launch",
+        "browser://kvm/page/command/navigate",
+        "browser://kvm/page/command/click-text",
+        "browser://kvm/input/command/type",
+        "browser://kvm/input/command/hotkey",
+        "browser://kvm/input/command/click",
+        "browser://kvm/screen/query/capture",
+        "browser://kvm/session/command/close",
+    }
+    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes | kvm_routes
     assert manifest["id"] == "browser-control"
     assert manifest["status"] == "available"
     assert set(manifest["routes"]) == expected
     assert set(bindings["bindings"]) == expected
     assert bindings["bindings"][ROUTE_OPEN]["meta"]["connector"] == "browser-control"
     assert chrome_routes <= set(bindings["bindings"])
+    assert kvm_routes <= set(bindings["bindings"])
 
 
 def test_chrome_routes_dry_run_without_chrome(monkeypatch):
@@ -142,3 +153,28 @@ def test_screenshot_uses_uri_service_map(monkeypatch):
     assert result["forwarded"] is True
     assert FakeBrowserHandler.seen[0]["uri"] == ROUTE_SCREENSHOT
     assert FakeBrowserHandler.seen[0]["payload"] == {"url": "https://example.com/", "output": "example.png"}
+
+
+def test_kvm_launch_without_display_is_graceful(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(core, "_browser_bin", lambda b: "/usr/bin/" + b)  # pretend it exists
+    res = core.launch(browser="firefox", url="https://example.com")
+    assert res["ok"] is False and "DISPLAY" in res["error"]
+
+
+def test_kvm_browser_agnostic_binary_lookup(monkeypatch):
+    from urirun_connector_browser_control import core
+    seen = {}
+    monkeypatch.setattr(core.shutil, "which", lambda n: ("/usr/bin/" + n) if n in ("firefox", "brave-browser") else None)
+    assert core._browser_bin("firefox") == "/usr/bin/firefox"
+    assert core._browser_bin("brave") == "/usr/bin/brave-browser"   # alias resolves
+    assert core._browser_bin("nope-xyz") is None
+
+
+def test_kvm_route_delegates_cleanly_without_tellmesh(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.delenv("TELLMESH_DIR", raising=False)
+    res = core.type_text(text="hi")           # urihim not importable here -> clean error
+    assert res["ok"] is False and "not importable" in res["error"]

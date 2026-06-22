@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -21,6 +22,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import urirun
@@ -29,6 +31,74 @@ CONNECTOR_ID = "browser-control"
 CONNECTOR = urirun.connector(CONNECTOR_ID, scheme="browser", target="desktop", meta={"label": "Browser Control"})
 # Local headless Chrome routes (browser://chrome/...) live in the same connector.
 CHROME = urirun.connector(CONNECTOR_ID, scheme="browser", target="chrome", meta={"label": "Chrome (headless)"})
+# KVM target (browser://kvm/...): drive ANY visible browser (firefox/chrome/…) by GUI —
+# launch + keyboard/mouse/screenshot/OCR-click — implemented by reusing the tellmesh
+# modules (urihim, urikvm, uriscreen) as the URI handlers. Real screen control, not
+# headless, so it works with every browser, its extensions, logins and plugins.
+KVM = urirun.connector(CONNECTOR_ID, scheme="browser", target="kvm", meta={"label": "Browser via KVM (any browser)"})
+
+
+_BROWSERS = {
+    "firefox": ("firefox", "firefox-esr"),
+    "chrome": ("google-chrome", "google-chrome-stable", "chrome"),
+    "chromium": ("chromium", "chromium-browser"),
+    "brave": ("brave-browser", "brave"),
+    "edge": ("microsoft-edge", "microsoft-edge-stable", "msedge"),
+    "opera": ("opera",),
+    "vivaldi": ("vivaldi", "vivaldi-stable"),
+}
+
+
+def _browser_bin(browser: str) -> str | None:
+    """Resolve a browser name to an executable; an unknown name is tried as a binary."""
+    for cand in _BROWSERS.get(browser, (browser,)):
+        path = shutil.which(cand)
+        if path:
+            return path
+    return None
+
+
+def _has_display() -> bool:
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+# --- tellmesh integration: reuse ../tellmesh/* handlers as the URI implementation ---
+
+_TM_CTX: dict[str, Any] = {"state": {}, "config": {},
+                           "allow_real": os.environ.get("URISYS_ALLOW_REAL") == "1"}
+
+
+def _ensure_tellmesh_path() -> None:
+    """Put tellmesh pack sources + uri_control on sys.path from $TELLMESH_DIR (so the
+    handlers import straight from a checkout when not pip-installed)."""
+    import sys
+    tm = os.environ.get("TELLMESH_DIR")
+    if not tm:
+        return
+    base = Path(tm)
+    for rel in ("uricontrol/core/python", "urihim", "urikvm", "uriscreen", "uribrowser", "urioffice", "urishell"):
+        p = base / rel
+        if p.is_dir() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+
+
+def _tm(module: str, func: str, payload: dict) -> dict:
+    """Call a tellmesh handler ``fn(payload, context)`` by ``module:func`` (reusing a
+    persistent context). Returns a clean error dict if the module isn't importable."""
+    try:
+        fn = getattr(importlib.import_module(module), func)
+    except Exception:
+        _ensure_tellmesh_path()
+        try:
+            fn = getattr(importlib.import_module(module), func)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"tellmesh '{module}' not importable: {exc}",
+                    "hint": "pip install the tellmesh pack, or set TELLMESH_DIR to a checkout"}
+    try:
+        out = fn(payload, _TM_CTX)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"{module}.{func} failed: {exc}"}
+    return out if isinstance(out, dict) else {"ok": True, "result": out}
 
 
 # --- remote-forward transport (real logic) --------------------------------
@@ -146,6 +216,78 @@ def chrome_screenshot(url: str = "", output: str = "chrome-screenshot.png") -> d
     saved = os.path.exists(output)
     return {"ok": proc.returncode == 0 and saved, "connector": CONNECTOR_ID, "target": "chrome",
             "url": url, "output": output, "saved": saved}
+
+
+# --- KVM routes: drive ANY browser by GUI, via the tellmesh modules ---------
+# launch with the connector's own browser-agnostic lookup; everything else (keyboard,
+# mouse, screenshot, OCR-click) delegates to tellmesh urihim/urikvm so the SAME control
+# surface works for firefox, chrome, brave, edge, … and their plugins/logins.
+
+@KVM.handler("session/command/launch", isolated=True, meta={"label": "Launch any browser (firefox/chrome/…)"})
+def launch(browser: str = "firefox", url: str = "") -> dict[str, Any]:
+    """Launch a visible browser window (browser-agnostic) on the node's desktop."""
+    binpath = _browser_bin(browser)
+    if not binpath:
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser,
+                "error": f"no binary for browser {browser!r}", "tried": list(_BROWSERS.get(browser, (browser,)))}
+    if not _has_display():
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser, "binary": binpath,
+                "error": "no DISPLAY/WAYLAND_DISPLAY — a GUI browser needs a desktop session"}
+    proc = subprocess.Popen([binpath, *([url] if url else [])])
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "kvm", "browser": browser,
+            "binary": binpath, "pid": proc.pid, "url": url}
+
+
+@KVM.handler("page/command/navigate", isolated=True, meta={"label": "Navigate (focus address bar, type URL, Enter)"})
+def navigate(url: str, enter: bool = True) -> dict[str, Any]:
+    """Browser-agnostic navigate via the keyboard: Ctrl+L → type URL → Enter (urihim)."""
+    steps = {"focus": _tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "l"]}),
+             "type": _tm("urihim.handlers", "keyboard_type", {"text": url})}
+    if enter:
+        steps["enter"] = _tm("urihim.handlers", "keyboard_key", {"key": "enter"})
+    return {"ok": all(s.get("ok", False) for s in steps.values()), "connector": CONNECTOR_ID,
+            "target": "kvm", "url": url, "steps": steps}
+
+
+@KVM.handler("input/command/type", isolated=True, meta={"label": "Type text into the focused field"})
+def type_text(text: str, enter: bool = False) -> dict[str, Any]:
+    res = _tm("urihim.handlers", "keyboard_type", {"text": text})
+    if enter and res.get("ok"):
+        res["enter"] = _tm("urihim.handlers", "keyboard_key", {"key": "enter"})
+    return {"connector": CONNECTOR_ID, "target": "kvm", **res}
+
+
+@KVM.handler("input/command/hotkey", isolated=True, meta={"label": "Press a keyboard shortcut"})
+def hotkey(keys: list[str]) -> dict[str, Any]:
+    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urihim.handlers", "keyboard_hotkey", {"keys": keys})}
+
+
+@KVM.handler("input/command/click", isolated=True, meta={"label": "Click at screen coordinates"})
+def click(x: int, y: int, button: str = "left") -> dict[str, Any]:
+    return {"connector": CONNECTOR_ID, "target": "kvm",
+            **_tm("urihim.handlers", "mouse_click", {"x": x, "y": y, "button": button})}
+
+
+@KVM.handler("page/command/click-text", isolated=True, meta={"label": "Click an on-screen label (OCR)"})
+def click_text(text: str) -> dict[str, Any]:
+    """OCR-locate a visible label and click it — works on any browser's chrome/content."""
+    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urikvm.handlers", "click_text", {"text": text})}
+
+
+@KVM.handler("screen/query/capture", isolated=True, meta={"label": "Capture the screen (any browser visible)"})
+def capture(monitor: int = 0) -> dict[str, Any]:
+    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urikvm.handlers", "screenshot", {"monitor": monitor})}
+
+
+@KVM.handler("session/command/close", isolated=True, meta={"label": "Close the active browser tab/window"})
+def close(hard: bool = False, browser: str = "") -> dict[str, Any]:
+    """Close the active tab (Ctrl+W via urihim), or kill the browser process if hard."""
+    if hard and browser:
+        binpath = _browser_bin(browser)
+        name = Path(binpath).name if binpath else browser
+        subprocess.run(["pkill", "-f", name], capture_output=True)
+        return {"ok": True, "connector": CONNECTOR_ID, "target": "kvm", "killed": name}
+    return {"connector": CONNECTOR_ID, "target": "kvm", **_tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "w"]})}
 
 
 # authoring surface — all derived from the declared @handlers, zero boilerplate.
