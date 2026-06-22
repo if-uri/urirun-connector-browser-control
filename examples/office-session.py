@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Run an office flow on a node via the ready uribrowser pack (driver=playwright), capture
-# BOTH directions (host->node trace + node->host SSE events), and render a single
-# self-contained Markdown report (each page's DOM + screenshot embedded inline). A flow may
-# visit several pages. Writes to ~/.urirun/<node>/session/<flow>-<UTC-ts>/ and refreshes a
-# per-node INDEX.md of all sessions.
+# BOTH directions (host->node trace + node->host SSE events), and render a Markdown report
+# that links each page's DOM + screenshot saved beside it as files (screenshot-N.png /
+# page-N.html — not inlined as base64). A flow may visit several pages. Writes to
+# ~/.urirun/<node>/session/<flow>-<UTC-ts>/ and refreshes a per-node INDEX.md of all sessions.
 import base64
 import json
 import os
@@ -92,9 +92,11 @@ for n, (label, url) in enumerate(pages, 1):
     b64 = shot.get("base64") if isinstance(shot, dict) and shot.get("mime") == "image/png" else None
     if html:
         (SESS / f"page-{n}.html").write_text(html, encoding="utf-8")
+    shot_file = None
     if b64:
         (SESS / f"screenshot-{n}.png").write_bytes(base64.b64decode(b64))
-    captures.append({"label": label, "title": (dom.get("title") if isinstance(dom, dict) else None), "dom": html, "shot": b64})
+        shot_file = f"screenshot-{n}.png"
+    captures.append({"label": label, "title": (dom.get("title") if isinstance(dom, dict) else None), "dom": html, "shot": shot_file})
 
 step("browser://laptop/main/form/command/submit", {"form_id": "login", "fields": {"email": "jan@firma.pl", "pass": "secret"}, "driver": "mock"}, "submit login form")
 
@@ -124,7 +126,9 @@ else:
 for n, c in enumerate(captures, 1):
     L += ["", f"## Page {n}: {c['label']} — {c.get('title') or ''}", ""]
     if c["shot"]:
-        L += [f"![screenshot {n}](data:image/png;base64,{c['shot']})", "", f"_(saved as `screenshot-{n}.png`)_", ""]
+        # reference the saved PNG by relative path (report.md sits beside it) instead
+        # of inlining a multi-MB base64 data URI into the Markdown
+        L += [f"![screenshot {n}]({c['shot']})", "", f"_`{c['shot']}`_", ""]
     if c["dom"]:
         L += ["<details><summary>DOM</summary>", "", "```html", c["dom"].strip()[:4000], "```", "", "</details>"]
 L += ["", "## Artifacts", ""] + [f"- `{p.name}` ({p.stat().st_size} B)" for p in sorted(SESS.iterdir()) if p.is_file()]
