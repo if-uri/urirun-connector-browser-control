@@ -66,6 +66,8 @@ screenshot; need `pip install playwright` on the node). Verified live on the len
 `system-open` opened the page in the desktop browser and `form.submit` recorded fields;
 `playwright` returns the pack's own "pip install playwright" hint until installed.
 Files: [`uribrowser-bridge.py`](uribrowser-bridge.py), [`uribrowser-bindings.json`](uribrowser-bindings.json),
+
+**Publish a post to a LinkedIn-like site** (e.g. `http://linkedin.local`) over one curl — `browser://<node>/social/command/publish-post` (Playwright types + clicks). Full guide: [social-publish.md](social-publish.md).
 [`deploy-uribrowser.sh`](deploy-uribrowser.sh).
 
 ## Install
