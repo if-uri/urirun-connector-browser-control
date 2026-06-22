@@ -110,9 +110,11 @@ one self-contained `report.md` (full DOM + the screenshot embedded inline for pr
 The flow is parameterizable via `FLOW`/`TARGET_URL`:
 
 ```bash
-NODE=laptop NODE_URL=http://192.168.188.201:8765 python3 office-session.py            # default login-form flow
-FLOW=example-com TARGET_URL=https://example.com python3 office-session.py             # any page
-# -> ~/.urirun/laptop/session/<flow>-<UTC-ts>/  { page.html, screenshot.png, events.json, trace.json, report.md }
+NODE=laptop NODE_URL=http://192.168.188.201:8765 python3 office-session.py     # default login-form flow
+FLOW=example-com TARGET_URL=https://example.com python3 office-session.py      # any single page
+FLOW=multi python3 office-session.py                                           # multi-page flow in one session
+# -> ~/.urirun/laptop/session/<flow>-<UTC-ts>/  { page-N.html, screenshot-N.png, events.json, trace.json, report.md }
+# and refreshes ~/.urirun/laptop/session/INDEX.md (table of all runs: flow, steps ok, screenshot, report)
 ```
 
 (Note: urirun's node state lives in `~/.urirun-node/` on the node — one node per machine,
