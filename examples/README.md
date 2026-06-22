@@ -1,6 +1,28 @@
 # browser-control connector — examples
 
-Headless Chrome (local) + noVNC (remote).
+Headless Chrome (local) + noVNC (remote) + **KVM control of any browser**.
+
+## Drive any browser by GUI on a urirun node (KVM)
+
+Deploy the single-file KVM handler onto a node over the mesh (no SSH; node needs
+`--admin-token`/`--key-auth`), then drive Firefox/Chrome/… by GUI:
+
+```bash
+# deploy browser://laptop/kvm/* onto the node (substitutes the node name, pushes code+bindings+env)
+TELLMESH_DIR=/path/to/tellmesh ./deploy-kvm.sh 192.168.188.201 laptop ~/.ssh/id_ed25519
+
+N=http://192.168.188.201:8765 ; run(){ curl -s -X POST $N/run -H 'Content-Type: application/json' -d "$1"; }
+run '{"uri":"browser://laptop/kvm/session/query/probe","payload":{}}'                        # what GUI tools are available
+run '{"uri":"browser://laptop/kvm/session/command/launch","payload":{"browser":"firefox","url":"https://example.com"}}'
+run '{"uri":"browser://laptop/kvm/page/command/navigate","payload":{"url":"https://example.com/login"}}'
+run '{"uri":"browser://laptop/kvm/input/command/type","payload":{"text":"jan@firma.pl"}}'
+run '{"uri":"browser://laptop/kvm/screen/query/capture","payload":{"monitor":0}}'
+```
+
+Files: [`kvm-flat-handler.py`](kvm-flat-handler.py) (the deployable handler),
+[`kvm-bindings.json`](kvm-bindings.json) (route templates), [`deploy-kvm.sh`](deploy-kvm.sh).
+The node needs a desktop session + `ydotool`+`grim` (or the tellmesh packs) for real
+input/screenshot — see the repo README's Wayland note.
 
 ## Install
 ```bash
