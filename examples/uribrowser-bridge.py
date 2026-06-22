@@ -15,7 +15,10 @@ _STATE = {}
 
 
 def _ctx(p):
-    return {"config": {"browser": {}}, "params": {"session": p.get("session", "main")},
+    # default driver to playwright (URISYS_BROWSER_DRIVER to override) so callers — incl. an
+    # LLM planner that omits `driver` — get REAL rendering, not the mock backend.
+    driver = os.environ.get("URISYS_BROWSER_DRIVER", "playwright")
+    return {"config": {"browser": {"driver": driver}}, "params": {"session": p.get("session", "main")},
             "state": _STATE, "allow_real": os.environ.get("URISYS_ALLOW_REAL") == "1",
             "dry_run": bool(p.get("dry_run"))}
 
