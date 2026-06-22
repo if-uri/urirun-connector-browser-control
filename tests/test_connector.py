@@ -7,6 +7,9 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import urirun
+from urirun import v2
+
 from urirun_connector_browser_control import (
     capture_screenshot,
     connector_manifest,
@@ -16,6 +19,35 @@ from urirun_connector_browser_control import (
 
 ROUTE_OPEN = "browser://desktop/page/command/open"
 ROUTE_SCREENSHOT = "browser://desktop/page/command/screenshot"
+
+
+def test_routes_are_isolated_subprocess_handlers():
+    # every route is an isolated @handler → registry-portable + crash-isolated,
+    # carrying a serializable python:{module,export} descriptor and no argv.
+    b = urirun_bindings()["bindings"]
+    assert {e["adapter"] for e in b.values()} == {"local-function-subprocess"}
+    entry = b[ROUTE_OPEN]
+    assert entry["python"]["module"] == "urirun_connector_browser_control.core"
+    assert entry["python"]["export"] == "open_page"
+    assert "argv" not in entry
+    json.dumps(urirun_bindings())  # serializable: no live refs leak
+
+
+def test_runs_out_of_process_from_compiled_registry(monkeypatch):
+    # the deciding path: a serialized->compiled registry runs the route OUT-OF-PROCESS
+    # via `python -m urirun.exec`, hydrated from python:{module,export}. open_page with
+    # no endpoint configured is a safe no-op (backend:none), so no network/Chrome needed.
+    monkeypatch.delenv("BROWSER_CONTROL_ENDPOINT", raising=False)
+    monkeypatch.delenv("URI_SERVICE_MAP", raising=False)
+    monkeypatch.delenv("BROWSER_CONTROL_ALLOW_LOCAL", raising=False)
+    registry = urirun.compile_registry(json.loads(json.dumps(urirun_bindings())))
+    env = v2.run(ROUTE_OPEN, registry, {"url": "https://example.com/"}, mode="execute",
+                 policy=urirun.policy(allow=["browser://*"]))
+    assert env["ok"] is True
+    assert env["adapter"] == "local-function-subprocess"
+    assert env["result"]["isolated"] is True and env["result"]["exitCode"] == 0
+    data = urirun.result_data(env)
+    assert data["backend"] == "none" and data["executed"] is False
 
 
 class FakeBrowserHandler(BaseHTTPRequestHandler):
