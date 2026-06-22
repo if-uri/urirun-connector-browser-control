@@ -2,12 +2,18 @@
 # Part of the ifURI solution.
 
 from .core import (
+    CDP,
     CHROME,
     CONNECTOR,
     CONNECTOR_ID,
     KVM,
     capture,
     capture_screenshot,
+    cdp_eval,
+    cdp_launch,
+    cdp_navigate,
+    cdp_screenshot,
+    cdp_tabs,
     chrome_dom,
     chrome_screenshot,
     chrome_text,
@@ -25,12 +31,18 @@ from .core import (
 )
 
 __all__ = [
+    "CDP",
     "CHROME",
     "CONNECTOR",
     "CONNECTOR_ID",
     "KVM",
     "capture",
     "capture_screenshot",
+    "cdp_eval",
+    "cdp_launch",
+    "cdp_navigate",
+    "cdp_screenshot",
+    "cdp_tabs",
     "chrome_dom",
     "chrome_screenshot",
     "chrome_text",

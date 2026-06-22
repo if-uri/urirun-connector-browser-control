@@ -49,6 +49,27 @@ tellmesh handlers run in mock mode). Any missing tool yields a clean error — n
 - `browser://chrome/page/query/dom`, `…/page/query/text`, `…/page/command/screenshot`
   (local headless Chrome/Chromium; safe dry-run when none is installed).
 
+### `browser://cdp/…` — real Chrome control via DevTools Protocol (no input tools)
+
+Drives Chrome/Chromium/Brave/Edge over CDP — launch with a debug port, then navigate,
+**run JS in the page** (click/fill/read), list tabs, and screenshot. Needs **no
+xdotool/ydotool** and works **headed under Wayland** (where synthetic input is blocked),
+so it's the most reliable way to genuinely control a Chrome-family browser on a node.
+Chrome-family only — for browser-agnostic GUI control use `browser://kvm`.
+
+- `browser://cdp/session/command/launch` `{browser?, url?, headless?}`
+- `browser://cdp/page/command/navigate` `{url}` · `browser://cdp/page/query/tabs`
+- `browser://cdp/page/query/eval` `{expr}` — run JS, returns the value
+- `browser://cdp/page/query/screenshot` — PNG of the live page
+
+```bash
+N=http://NODE:8765 ; run(){ curl -s -X POST $N/run -H 'Content-Type: application/json' -d "$1"; }
+run '{"uri":"browser://cdp/session/command/launch","payload":{"browser":"chrome","url":"https://example.com"}}'
+run '{"uri":"browser://cdp/page/query/eval","payload":{"expr":"document.title"}}'
+run '{"uri":"browser://cdp/page/query/eval","payload":{"expr":"document.querySelector(\"a\").click()"}}'  # click → navigate
+run '{"uri":"browser://cdp/page/query/screenshot","payload":{}}'
+```
+
 ### `browser://desktop/…` — forward to a noVNC/urirun node
 
 - `browser://desktop/page/command/open`, `…/page/command/screenshot`

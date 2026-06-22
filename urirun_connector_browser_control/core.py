@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib
 import json
 import os
@@ -20,6 +21,7 @@ import shutil
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -363,6 +365,150 @@ def close(hard: bool = False, browser: str = "") -> dict[str, Any]:
         return _tag({"ok": True, "killed": name})
     res = _tm("urihim.handlers", "keyboard_hotkey", {"keys": ["ctrl", "w"]}) or _os_key("ctrl+w")
     return _tag(res)
+
+
+# --- CDP target: real Chrome-family control without OS input tools -----------
+# browser://cdp/... drives Chrome/Chromium/Brave/Edge via the DevTools Protocol — launch
+# with a debug port, then navigate / run JS / screenshot. Needs NO xdotool/ydotool and
+# works headed under Wayland (where synthetic input is otherwise blocked). Chrome-family
+# only (Firefox has its own protocol); for browser-agnostic GUI control use browser://kvm.
+CDP = urirun.connector(CONNECTOR_ID, scheme="browser", target="cdp", meta={"label": "Chrome via DevTools Protocol"})
+_CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
+_CDP_CHROME = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "brave-browser", "microsoft-edge")
+
+
+def _cdp_http(path: str, method: str = "GET") -> Any:
+    req = urllib.request.Request(f"http://127.0.0.1:{_CDP_PORT}{path}", method=method)
+    return json.loads(urllib.request.urlopen(req, timeout=5).read() or "{}")
+
+
+def _cdp_pages() -> list[dict]:
+    return [t for t in _cdp_http("/json") if t.get("type") == "page"]
+
+
+def _cdp_ws(ws_url: str, messages: list[dict]) -> list[dict]:
+    import socket
+    import struct
+    u = urllib.parse.urlparse(ws_url)
+    s = socket.create_connection((u.hostname, u.port), timeout=6)
+    s.sendall((f"GET {u.path} HTTP/1.1\r\nHost: {u.hostname}:{u.port}\r\nUpgrade: websocket\r\n"
+               f"Connection: Upgrade\r\nSec-WebSocket-Key: {base64.b64encode(os.urandom(16)).decode()}\r\n"
+               f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        buf += s.recv(4096)
+
+    def send(text: str) -> None:
+        p = text.encode()
+        mask, h, n = os.urandom(4), bytearray([0x81]), len(p)
+        if n < 126:
+            h.append(0x80 | n)
+        elif n < 65536:
+            h.append(0x80 | 126); h += struct.pack(">H", n)
+        else:
+            h.append(0x80 | 127); h += struct.pack(">Q", n)
+        h += mask
+        s.sendall(bytes(h) + bytes(b ^ mask[i % 4] for i, b in enumerate(p)))
+
+    def rd(n: int) -> bytes | None:
+        b = b""
+        while len(b) < n:
+            c = s.recv(n - len(b))
+            if not c:
+                return None
+            b += c
+        return b
+
+    def recv() -> str | None:
+        h = rd(2)
+        if not h:
+            return None
+        ln = h[1] & 0x7f
+        if ln == 126:
+            ln = struct.unpack(">H", rd(2))[0]
+        elif ln == 127:
+            ln = struct.unpack(">Q", rd(8))[0]
+        return (rd(ln) or b"").decode("utf-8", "replace")
+
+    out = []
+    for msg in messages:
+        send(json.dumps(msg))
+        while True:
+            data = recv()
+            if data is None:
+                break
+            obj = json.loads(data)
+            if obj.get("id") == msg["id"]:
+                out.append(obj)
+                break
+    s.close()
+    return out
+
+
+def _cdp_cmd(method: str, params: dict | None = None) -> dict:
+    pages = _cdp_pages()
+    if not pages:
+        return {"ok": False, "error": "no page target (launch first)"}
+    res = _cdp_ws(pages[0]["webSocketDebuggerUrl"], [{"id": 1, "method": method, "params": params or {}}])
+    return res[0] if res else {}
+
+
+@CDP.handler("session/command/launch", isolated=True, meta={"label": "Launch Chrome-family with a debug port"})
+def cdp_launch(browser: str = "chrome", url: str = "about:blank", headless: bool = False) -> dict[str, Any]:
+    binpath = next((shutil.which(c) for c in ((browser,) if browser != "chrome" else _CDP_CHROME) if shutil.which(c)), None)
+    if not binpath:
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": f"no Chrome-family browser for {browser!r}"}
+    args = [binpath, f"--remote-debugging-port={_CDP_PORT}", "--remote-debugging-address=127.0.0.1",
+            "--user-data-dir=/tmp/urirun-cdp-profile", "--no-first-run", "--no-default-browser-check"]
+    if headless:
+        args.append("--headless=new")
+    proc = subprocess.Popen([*args, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(40):
+        try:
+            ver = _cdp_http("/json/version")
+            return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "pid": proc.pid,
+                    "debugPort": _CDP_PORT, "browser": ver.get("Browser"), "url": url}
+        except Exception:  # noqa: BLE001 - debugger not up yet
+            time.sleep(0.25)
+    return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "debugger did not come up", "pid": proc.pid}
+
+
+@CDP.handler("page/query/tabs", isolated=True, meta={"label": "List open tabs"})
+def cdp_tabs() -> dict[str, Any]:
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp",
+            "tabs": [{"id": t["id"], "title": t.get("title"), "url": t.get("url")} for t in _cdp_pages()]}
+
+
+@CDP.handler("page/command/navigate", isolated=True, meta={"label": "Open/navigate a tab"})
+def cdp_navigate(url: str) -> dict[str, Any]:
+    try:
+        r = _cdp_http(f"/json/new?{urllib.parse.quote(url, safe='')}", method="PUT")
+        return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "via": "http", "id": r.get("id"), "url": r.get("url")}
+    except Exception:  # noqa: BLE001 - /json/new disabled → navigate current tab over WS
+        r = _cdp_cmd("Page.navigate", {"url": url})
+        return {"ok": "error" not in r, "connector": CONNECTOR_ID, "target": "cdp", "via": "ws", "result": r.get("result")}
+
+
+@CDP.handler("page/query/eval", isolated=True, meta={"label": "Run JS in the page (click/fill/read)"})
+def cdp_eval(expr: str) -> dict[str, Any]:
+    r = _cdp_cmd("Runtime.evaluate", {"expression": expr, "returnByValue": True, "awaitPromise": True})
+    res = r.get("result") or {}
+    if "error" in r:
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": r.get("error")}
+    if res.get("exceptionDetails"):
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": res["exceptionDetails"].get("text")}
+    val = res.get("result") or {}
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "value": val.get("value"), "type": val.get("type")}
+
+
+@CDP.handler("page/query/screenshot", isolated=True, meta={"label": "Screenshot the live page (CDP)"})
+def cdp_screenshot() -> dict[str, Any]:
+    r = _cdp_cmd("Page.captureScreenshot", {"format": "png"})
+    data = (r.get("result") or {}).get("data")
+    if not data:
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "no screenshot data"}
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "mime": "image/png",
+            "bytes": len(base64.b64decode(data)), "base64_head": data[:60]}
 
 
 # authoring surface — all derived from the declared @handlers, zero boilerplate.

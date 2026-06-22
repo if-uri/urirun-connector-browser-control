@@ -24,6 +24,25 @@ Files: [`kvm-flat-handler.py`](kvm-flat-handler.py) (the deployable handler),
 The node needs a desktop session + `ydotool`+`grim` (or the tellmesh packs) for real
 input/screenshot — see the repo README's Wayland note.
 
+## Real Chrome control with no input tools (CDP) — works under Wayland
+
+When the node has no `ydotool`/`xdotool` (e.g. GNOME/Wayland), use the DevTools-Protocol
+handler [`cdp-flat-handler.py`](cdp-flat-handler.py): launch Chrome with a debug port and
+control it by running JS in the page. Verified live driving Firefox/Chrome on a remote
+GNOME/Wayland laptop:
+
+```bash
+B=http://192.168.188.201:8765 ; run(){ curl -s -X POST $B/run -H 'Content-Type: application/json' -d "$1"; }
+run '{"uri":"browser://laptop/cdp/session/command/launch","payload":{"browser":"chrome","url":"https://example.com"}}'
+run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.title"}}'                  # "Example Domain"
+run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.querySelector(\"a\").click()"}}'
+run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.title+\" @ \"+location.host"}}'  # navigated
+run '{"uri":"browser://laptop/cdp/page/query/screenshot","payload":{}}'                                   # real PNG
+```
+
+Deploy it the same way as the KVM handler (`urirun host deploy --code cdp-flat-handler.py`
+with bindings on `browser://<node>/cdp/*`).
+
 ## Install
 ```bash
 urirun install urirun-connector-browser-control

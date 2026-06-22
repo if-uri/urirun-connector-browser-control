@@ -95,7 +95,14 @@ def test_manifest_and_bindings_share_routes():
         "browser://kvm/screen/query/capture",
         "browser://kvm/session/command/close",
     }
-    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes | kvm_routes
+    cdp_routes = {
+        "browser://cdp/session/command/launch",
+        "browser://cdp/page/query/tabs",
+        "browser://cdp/page/command/navigate",
+        "browser://cdp/page/query/eval",
+        "browser://cdp/page/query/screenshot",
+    }
+    expected = {ROUTE_OPEN, ROUTE_SCREENSHOT} | chrome_routes | kvm_routes | cdp_routes
     assert manifest["id"] == "browser-control"
     assert manifest["status"] == "available"
     assert set(manifest["routes"]) == expected
@@ -103,6 +110,23 @@ def test_manifest_and_bindings_share_routes():
     assert bindings["bindings"][ROUTE_OPEN]["meta"]["connector"] == "browser-control"
     assert chrome_routes <= set(bindings["bindings"])
     assert kvm_routes <= set(bindings["bindings"])
+    assert cdp_routes <= set(bindings["bindings"])
+
+
+def test_cdp_launch_without_chrome_is_graceful(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core.shutil, "which", lambda n: None)  # no Chrome-family browser
+    res = core.cdp_launch(browser="chrome")
+    assert res["ok"] is False and "Chrome-family" in res["error"]
+    assert res["target"] == "cdp"
+
+
+def test_cdp_eval_without_running_chrome_is_graceful(monkeypatch):
+    from urirun_connector_browser_control import core
+    # no debugger up -> _cdp_pages() raises -> _cdp_cmd returns a clean no-target error
+    monkeypatch.setattr(core, "_cdp_pages", lambda: [])
+    res = core.cdp_eval(expr="document.title")
+    assert res["ok"] is False and "no page target" in res["error"]
 
 
 def test_chrome_routes_dry_run_without_chrome(monkeypatch):
