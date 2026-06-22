@@ -173,8 +173,25 @@ def test_kvm_browser_agnostic_binary_lookup(monkeypatch):
     assert core._browser_bin("nope-xyz") is None
 
 
-def test_kvm_route_delegates_cleanly_without_tellmesh(monkeypatch):
+def test_kvm_route_falls_back_cleanly_without_tellmesh_or_os_tools(monkeypatch):
     from urirun_connector_browser_control import core
     monkeypatch.delenv("TELLMESH_DIR", raising=False)
-    res = core.type_text(text="hi")           # urihim not importable here -> clean error
-    assert res["ok"] is False and "not importable" in res["error"]
+    monkeypatch.setattr(core.shutil, "which", lambda n: None)  # no ydotool/xdotool either
+    res = core.type_text(text="hi")           # no tellmesh + no OS tool -> clean error, no crash
+    assert res["ok"] is False and "input tool" in res["error"]
+    assert res["connector"] == "browser-control" and res["target"] == "kvm"
+
+
+def test_kvm_type_uses_os_tool_when_tellmesh_absent(monkeypatch):
+    from urirun_connector_browser_control import core
+    calls = {}
+
+    def fake_run(cmd, timeout=10.0):
+        calls["cmd"] = cmd
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(core.shutil, "which", lambda n: "/usr/bin/ydotool" if n == "ydotool" else None)
+    monkeypatch.setattr(core, "_run", fake_run)
+    res = core.type_text(text="hello")        # tellmesh absent -> ydotool fallback
+    assert res["ok"] is True and res["via"] == "ydotool"
+    assert calls["cmd"] == ["ydotool", "type", "hello"]
