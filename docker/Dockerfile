@@ -7,4 +7,8 @@ RUN apt-get update \
 COPY . /app
 RUN pip install --no-cache-dir -e ".[test]"
 
+# Defense-in-depth: drop root (connector/node ports are >1024, non-root is fine).
+RUN useradd -m -u 10001 app && chown -R app:app .
+USER app
+
 CMD ["bash", "docker/run-smoke.sh"]
