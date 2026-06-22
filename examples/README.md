@@ -43,6 +43,31 @@ run '{"uri":"browser://laptop/cdp/page/query/screenshot","payload":{}}'         
 Deploy it the same way as the KVM handler (`urirun host deploy --code cdp-flat-handler.py`
 with bindings on `browser://<node>/cdp/*`).
 
+## Use the ready tellmesh `uribrowser` pack (standard surface)
+
+Instead of a bespoke handler you can deploy the **ready `uribrowserdocker` pack** from
+tellmesh and drive it over its standard `browser://<node>/<session>/...` URIs
+(`query/status`, `page/command/open`, `page/query/dom`, `page/command/screenshot`,
+`form/command/submit`, `social/command/publish-post`). `deploy-uribrowser.sh` pushes the
+pack's own `handlers.py` (from `$TELLMESH_DIR`, not a vendored copy) plus a thin
+`(payload,context)`→`fn(**payload)` bridge:
+
+```bash
+TELLMESH_DIR=/path/to/tellmesh ./deploy-uribrowser.sh 192.168.188.201 laptop ~/.ssh/id_ed25519
+
+B=http://192.168.188.201:8765 ; run(){ curl -s -X POST $B/run -H 'Content-Type: application/json' -d "$1"; }
+run '{"uri":"browser://laptop/main/query/status","payload":{}}'                       # driver caps
+run '{"uri":"browser://laptop/main/page/command/open","payload":{"url":"https://example.com","driver":"system-open"}}'
+run '{"uri":"browser://laptop/main/form/command/submit","payload":{"form_id":"login","fields":{"email":"jan@firma.pl"},"driver":"system-open"}}'
+```
+
+Drivers: `mock`, `system-open` (xdg-open — real, no deps), `playwright`/`cdp` (real DOM +
+screenshot; need `pip install playwright` on the node). Verified live on the lenovo node:
+`system-open` opened the page in the desktop browser and `form.submit` recorded fields;
+`playwright` returns the pack's own "pip install playwright" hint until installed.
+Files: [`uribrowser-bridge.py`](uribrowser-bridge.py), [`uribrowser-bindings.json`](uribrowser-bindings.json),
+[`deploy-uribrowser.sh`](deploy-uribrowser.sh).
+
 ## Install
 ```bash
 urirun install urirun-connector-browser-control
