@@ -93,6 +93,7 @@ def test_manifest_and_bindings_share_routes():
         "browser://kvm/input/command/hotkey",
         "browser://kvm/input/command/click",
         "browser://kvm/screen/query/capture",
+        "browser://kvm/screen/query/inspect",
         "browser://kvm/session/command/close",
     }
     cdp_routes = {
@@ -205,6 +206,18 @@ def test_kvm_route_falls_back_cleanly_without_tellmesh_or_os_tools(monkeypatch):
     res = core.type_text(text="hi")           # no tellmesh + no OS tool -> clean error, no crash
     assert res["ok"] is False and "input tool" in res["error"]
     assert res["connector"] == "browser-control" and res["target"] == "kvm"
+
+
+def test_kvm_inspect_reports_missing_ocr_cleanly(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core, "_tm", lambda *a, **k: None)
+    monkeypatch.setattr(core, "_os_screenshot", lambda: {"ok": True, "path": "/tmp/shot.png", "bytes": 12})
+    monkeypatch.setattr(core.shutil, "which", lambda n: None)
+    res = core.inspect_screen(contains="LinkedIn")
+    assert res["ok"] is True
+    assert res["capture"]["path"] == "/tmp/shot.png"
+    assert res["ocr"]["ok"] is False
+    assert res["matched"] is False
 
 
 def test_kvm_type_uses_os_tool_when_tellmesh_absent(monkeypatch):

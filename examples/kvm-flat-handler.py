@@ -109,6 +109,19 @@ def _os_screenshot():
     return {"ok": False, "error": "no working screenshot tool (grim/import/scrot/maim/gnome-screenshot)"}
 
 
+def _tesseract(path):
+    if not path:
+        return {"ok": False, "error": "no screenshot path for OCR"}
+    if not shutil.which("tesseract"):
+        return {"ok": False, "error": "tesseract is not installed on the node", "path": path}
+    try:
+        out = _run(["tesseract", path, "stdout"], timeout=20)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "path": path}
+    text = out.stdout.strip()
+    return {"ok": out.returncode == 0, "path": path, "text": text, "chars": len(text), "stderr": out.stderr[-500:]}
+
+
 # --- routes (fn(**payload)) ---
 
 def probe(**p):
@@ -167,6 +180,17 @@ def click_text(**p):
 
 def capture(**p):
     return _tm("urikvm.handlers", "screenshot", {"monitor": p.get("monitor", 0)}) or _os_screenshot()
+
+
+def inspect(**p):
+    shot = _tm("urikvm.handlers", "screenshot", {"monitor": p.get("monitor", 0)}) or _os_screenshot()
+    path = str((shot or {}).get("path") or (shot or {}).get("file") or "")
+    ocr = _tesseract(path)
+    text = ocr.get("text") or ""
+    contains = str(p.get("contains") or "")
+    return {"ok": bool(shot.get("ok")) and (ocr.get("ok") or bool(path)),
+            "capture": shot, "ocr": ocr, "contains": contains,
+            "matched": bool(contains and contains.lower() in text.lower())}
 
 
 def close(**p):

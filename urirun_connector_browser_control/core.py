@@ -148,7 +148,6 @@ def _os_click(x: int, y: int, button: str) -> dict[str, Any]:
 
 
 def _os_screenshot() -> dict[str, Any]:
-    import base64
     path = f"/tmp/urirun-browser-shot-{os.getpid()}.png"
     # X11-native / Wayland-native tools first (no session DBus, won't hang in a service);
     # gnome-screenshot/spectacle need a portal+session bus, so try them last.
@@ -165,6 +164,19 @@ def _os_screenshot() -> dict[str, Any]:
             return {"ok": True, "via": cmd[0], "path": path, "bytes": len(data),
                     "base64_head": base64.b64encode(data).decode()[:60]}
     return {"ok": False, "error": "no working screenshot tool (grim/import/scrot/maim/gnome-screenshot)"}
+
+
+def _tesseract(path: str) -> dict[str, Any]:
+    if not path:
+        return {"ok": False, "error": "no screenshot path for OCR"}
+    if not shutil.which("tesseract"):
+        return {"ok": False, "error": "tesseract is not installed on the node", "path": path}
+    try:
+        proc = _run(["tesseract", path, "stdout"], timeout=20)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc), "path": path}
+    text = proc.stdout.strip()
+    return {"ok": proc.returncode == 0, "path": path, "text": text, "chars": len(text), "stderr": proc.stderr[-500:]}
 
 
 # --- remote-forward transport (real logic) --------------------------------
@@ -367,6 +379,18 @@ def click_text(text: str) -> dict[str, Any]:
 def capture(monitor: int = 0) -> dict[str, Any]:
     res = _tm("urikvm.handlers", "screenshot", {"monitor": monitor}) or _os_screenshot()
     return _tag(res)
+
+
+@KVM.handler("screen/query/inspect", isolated=True, meta={"label": "Capture the screen and OCR visible text"})
+def inspect_screen(monitor: int = 0, contains: str = "") -> dict[str, Any]:
+    """Inspect the physical screen before falling back to protocol-level browser state."""
+    shot = _tm("urikvm.handlers", "screenshot", {"monitor": monitor}) or _os_screenshot()
+    path = str((shot or {}).get("path") or (shot or {}).get("file") or "")
+    ocr = _tesseract(path)
+    text = ocr.get("text") or ""
+    return _tag({"ok": bool(shot.get("ok")) and (ocr.get("ok") or bool(path)),
+                 "capture": shot, "ocr": ocr,
+                 "contains": contains, "matched": bool(contains and contains.lower() in text.lower())})
 
 
 @KVM.handler("session/command/close", isolated=True, meta={"label": "Close the active browser tab/window"})
