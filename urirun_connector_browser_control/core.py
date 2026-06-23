@@ -540,13 +540,19 @@ def cdp_eval(expr: str) -> dict[str, Any]:
 
 
 @CDP.handler("page/query/screenshot", isolated=True, meta={"label": "Screenshot the live page (CDP)"})
-def cdp_screenshot() -> dict[str, Any]:
+def cdp_screenshot(output: str = "") -> dict[str, Any]:
     r = _cdp_cmd("Page.captureScreenshot", {"format": "png"})
     data = (r.get("result") or {}).get("data")
     if not data:
         return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "no screenshot data"}
-    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "mime": "image/png",
-            "bytes": len(base64.b64decode(data)), "base64_head": data[:60]}
+    raw = base64.b64decode(data)
+    out: dict[str, Any] = {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "mime": "image/png",
+                           "bytes": len(raw), "base64_head": data[:60]}
+    if output:
+        Path(output).write_bytes(raw)
+        out["output"] = output
+        out["saved"] = os.path.exists(output)
+    return out
 
 
 # authoring surface — all derived from the declared @handlers, zero boilerplate.
