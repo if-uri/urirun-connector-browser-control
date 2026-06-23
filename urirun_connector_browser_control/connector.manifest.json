@@ -1,7 +1,9 @@
 {
   "id": "browser-control",
   "name": "Browser Control",
-  "uriSchemes": ["browser"],
+  "uriSchemes": [
+    "browser"
+  ],
   "status": "available",
   "category": "Automation",
   "summary": "Drive ANY browser (Firefox/Chrome/Chromium/Brave/Edge/…) through browser:// URI commands — by KVM GUI control (launch + keyboard/mouse/screenshot/OCR-click via tellmesh urihim/urikvm), by headless Chrome (read/screenshot), or forwarded to a noVNC/urirun node.",
@@ -37,5 +39,31 @@
     "name": "if-uri",
     "url": "https://ifuri.com",
     "github": "https://github.com/if-uri"
-  }
+  },
+  "routes": [
+    "browser://cdp/page/command/navigate",
+    "browser://cdp/page/query/eval",
+    "browser://cdp/page/query/screenshot",
+    "browser://cdp/page/query/tabs",
+    "browser://cdp/session/command/launch",
+    "browser://cdp/session/query/find",
+    "browser://chrome/page/command/screenshot",
+    "browser://chrome/page/query/dom",
+    "browser://chrome/page/query/text",
+    "browser://desktop/page/command/open",
+    "browser://desktop/page/command/screenshot",
+    "browser://desktop/system/query/browsers",
+    "browser://kvm/input/command/click",
+    "browser://kvm/input/command/hotkey",
+    "browser://kvm/input/command/type",
+    "browser://kvm/page/command/click-text",
+    "browser://kvm/page/command/navigate",
+    "browser://kvm/screen/query/capture",
+    "browser://kvm/screen/query/inspect",
+    "browser://kvm/session/command/close",
+    "browser://kvm/session/command/launch"
+  ],
+  "adapterKinds": [
+    "local-function"
+  ]
 }
