@@ -1,6 +1,7 @@
 {
   "id": "browser-control",
   "name": "Browser Control",
+  "uriSchemes": ["browser"],
   "status": "available",
   "category": "Automation",
   "summary": "Drive ANY browser (Firefox/Chrome/Chromium/Brave/Edge/…) through browser:// URI commands — by KVM GUI control (launch + keyboard/mouse/screenshot/OCR-click via tellmesh urihim/urikvm), by headless Chrome (read/screenshot), or forwarded to a noVNC/urirun node.",

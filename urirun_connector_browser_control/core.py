@@ -420,6 +420,11 @@ def _cdp_http(path: str, method: str = "GET") -> Any:
     return json.loads(urllib.request.urlopen(req, timeout=5).read() or "{}")
 
 
+def _cdp_http_base(base: str, path: str, method: str = "GET", timeout: float = 5.0) -> Any:
+    req = urllib.request.Request(base.rstrip("/") + path, method=method)
+    return json.loads(urllib.request.urlopen(req, timeout=timeout).read() or "{}")
+
+
 def _cdp_pages() -> list[dict]:
     return [t for t in _cdp_http("/json") if t.get("type") == "page"]
 
@@ -491,6 +496,115 @@ def _cdp_cmd(method: str, params: dict | None = None) -> dict:
     return res[0] if res else {}
 
 
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+def _cdp_base_from_port(port: str | int) -> str:
+    return f"http://127.0.0.1:{int(port)}"
+
+
+def _cdp_parse_endpoints(endpoints: str = "", debug_ports: str = "") -> list[dict[str, str]]:
+    """Parse CDP endpoints without launching or navigating any browser.
+
+    Accepted endpoint forms:
+      - chrome=http://127.0.0.1:9222
+      - http://127.0.0.1:9222
+      - chrome:9222
+    """
+    out: list[dict[str, str]] = []
+    raw_endpoints = endpoints or os.environ.get("CDP_ENDPOINTS", "")
+    for index, item in enumerate(_split_csv(raw_endpoints), 1):
+        label = f"cdp-{index}"
+        value = item
+        if "=" in item:
+            label, value = [part.strip() for part in item.split("=", 1)]
+        elif ":" in item and not item.startswith(("http://", "https://")):
+            label, value = [part.strip() for part in item.split(":", 1)]
+        base = value if value.startswith(("http://", "https://")) else _cdp_base_from_port(value)
+        out.append({"label": label or f"cdp-{index}", "base": base.rstrip("/")})
+    if out:
+        return out
+    ports = debug_ports or os.environ.get("CDP_DEBUG_PORTS") or os.environ.get("LI_DEBUG_PORTS") or os.environ.get("LI_DEBUG_PORT") or str(_CDP_PORT)
+    return [{"label": f"cdp-{port}", "base": _cdp_base_from_port(port)} for port in _split_csv(ports)]
+
+
+def _domain_session_url(domain: str, url: str = "") -> str:
+    if url:
+        return url
+    cleaned = domain.strip().rstrip("/") or "linkedin.com"
+    if cleaned.startswith(("http://", "https://")):
+        return cleaned + "/"
+    return f"https://www.{cleaned}/"
+
+
+def _safe_matching_tabs(tabs: Any, domain: str) -> list[dict[str, Any]]:
+    domain_key = domain.lower().replace("www.", "")
+    out: list[dict[str, Any]] = []
+    for tab in tabs if isinstance(tabs, list) else []:
+        if tab.get("type") != "page":
+            continue
+        url = str(tab.get("url") or "")
+        if domain_key not in url.lower():
+            continue
+        parsed = urllib.parse.urlparse(url)
+        path = parsed.path or "/"
+        login_page = path.startswith("/login") or "session_redirect" in parsed.query
+        out.append({
+            "id": str(tab.get("id") or ""),
+            "title": str(tab.get("title") or "")[:160],
+            "url": url,
+            "loginPageLikely": login_page,
+            "sessionLikely": not login_page,
+        })
+    return out
+
+
+def _cdp_probe_endpoint(endpoint: dict[str, str], *, domain: str, url: str, cookie_names: tuple[str, ...]) -> dict[str, Any]:
+    try:
+        version = _cdp_http_base(endpoint["base"], "/json/version")
+        tabs = _cdp_http_base(endpoint["base"], "/json")
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "label": endpoint["label"],
+            "endpoint": endpoint["base"],
+            "reachable": False,
+            "error": str(exc),
+        }
+
+    pages = [tab for tab in tabs if isinstance(tab, dict) and tab.get("type") == "page" and tab.get("webSocketDebuggerUrl")]
+    cookie_result: dict[str, Any] = {"result": {"cookies": []}}
+    if pages:
+        try:
+            cookie_result = _cdp_ws(
+                str(pages[0]["webSocketDebuggerUrl"]),
+                [{"id": 1, "method": "Network.getCookies", "params": {"urls": [url]}}],
+            )[0]
+        except Exception as exc:  # noqa: BLE001
+            cookie_result = {"error": str(exc), "result": {"cookies": []}}
+
+    cookies = (cookie_result.get("result") or {}).get("cookies") or []
+    present = sorted({str(cookie.get("name")) for cookie in cookies if cookie.get("name") in cookie_names})
+    matching_tabs = _safe_matching_tabs(tabs, domain)
+    has_cookie = bool(present)
+    return {
+        "ok": True,
+        "label": endpoint["label"],
+        "endpoint": endpoint["base"],
+        "reachable": True,
+        "browser": version.get("Browser"),
+        "protocol": version.get("Protocol-Version"),
+        "domain": domain,
+        "hasSessionCookie": has_cookie,
+        "sessionCookieNames": present,
+        "matchingTabs": matching_tabs,
+        "matchingTabCount": len(matching_tabs),
+        "sessionLikely": has_cookie or any(tab.get("sessionLikely") for tab in matching_tabs),
+        "reason": "session cookie present" if has_cookie else "no matching session cookie found",
+    }
+
+
 @CDP.handler("session/command/launch", isolated=True, meta={"label": "Launch Chrome-family with a debug port"})
 def cdp_launch(browser: str = "chrome", url: str = "about:blank", headless: bool = False) -> dict[str, Any]:
     binpath = next((shutil.which(c) for c in ((browser,) if browser != "chrome" else _CDP_CHROME) if shutil.which(c)), None)
@@ -509,6 +623,42 @@ def cdp_launch(browser: str = "chrome", url: str = "about:blank", headless: bool
         except Exception:  # noqa: BLE001 - debugger not up yet
             time.sleep(0.25)
     return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "debugger did not come up", "pid": proc.pid}
+
+
+@CDP.handler("session/query/find", isolated=True, meta={"label": "Find an existing CDP browser session for a domain"})
+def cdp_find_session(
+    domain: str = "linkedin.com",
+    url: str = "",
+    endpoints: str = "",
+    debug_ports: str = "",
+    cookie_names: str = "li_at",
+) -> dict[str, Any]:
+    """Read-only probe for already-running CDP browsers.
+
+    It does not launch, navigate, click, type, or expose cookie values. It only lists
+    matching tabs and reports the names of session cookies that exist.
+    """
+    session_url = _domain_session_url(domain, url)
+    wanted_cookies = tuple(_split_csv(cookie_names or "li_at")) or ("li_at",)
+    candidates = [
+        _cdp_probe_endpoint(endpoint, domain=domain, url=session_url, cookie_names=wanted_cookies)
+        for endpoint in _cdp_parse_endpoints(endpoints, debug_ports)
+    ]
+    selected = next((item for item in candidates if item.get("hasSessionCookie")), None)
+    if selected is None:
+        selected = next((item for item in candidates if item.get("sessionLikely")), None)
+    return {
+        "ok": True,
+        "connector": CONNECTOR_ID,
+        "target": "cdp",
+        "mode": "read-only",
+        "domain": domain,
+        "url": session_url,
+        "found": selected is not None,
+        "selected": selected,
+        "candidates": candidates,
+        "safety": "does not launch, navigate, type, click, publish, or expose cookie values",
+    }
 
 
 @CDP.handler("page/query/tabs", isolated=True, meta={"label": "List open tabs"})

@@ -34,6 +34,7 @@ GNOME/Wayland laptop:
 ```bash
 B=http://192.168.188.201:8765 ; run(){ curl -s -X POST $B/run -H 'Content-Type: application/json' -d "$1"; }
 run '{"uri":"browser://laptop/cdp/session/command/launch","payload":{"browser":"chrome","url":"https://example.com"}}'
+run '{"uri":"browser://laptop/cdp/session/query/find","payload":{"domain":"linkedin.com","debug_ports":"9222,9223"}}' # read-only session probe
 run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.title"}}'                  # "Example Domain"
 run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.querySelector(\"a\").click()"}}'
 run '{"uri":"browser://laptop/cdp/page/query/eval","payload":{"expr":"document.title+\" @ \"+location.host"}}'  # navigated

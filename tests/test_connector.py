@@ -98,6 +98,7 @@ def test_manifest_and_bindings_share_routes():
     }
     cdp_routes = {
         "browser://cdp/session/command/launch",
+        "browser://cdp/session/query/find",
         "browser://cdp/page/query/tabs",
         "browser://cdp/page/command/navigate",
         "browser://cdp/page/query/eval",
@@ -129,6 +130,43 @@ def test_cdp_eval_without_running_chrome_is_graceful(monkeypatch):
     monkeypatch.setattr(core, "_cdp_pages", lambda: [])
     res = core.cdp_eval(expr="document.title")
     assert res["ok"] is False and "no page target" in res["error"]
+
+
+def test_cdp_find_session_reports_cookie_names_not_values(monkeypatch):
+    from urirun_connector_browser_control import core
+
+    tabs = [{
+        "id": "page-1",
+        "type": "page",
+        "title": "Feed | LinkedIn",
+        "url": "https://www.linkedin.com/feed/",
+        "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/1",
+    }]
+
+    def fake_http(base, path, method="GET", timeout=5.0):
+        if path == "/json/version":
+            return {"Browser": "Chrome/125", "Protocol-Version": "1.3"}
+        if path == "/json":
+            return tabs
+        raise AssertionError(path)
+
+    def fake_ws(ws_url, messages):
+        return [{"id": 1, "result": {"cookies": [
+            {"name": "li_at", "value": "secret-auth-cookie"},
+            {"name": "bcookie", "value": "not-session"},
+        ]}}]
+
+    monkeypatch.setattr(core, "_cdp_http_base", fake_http)
+    monkeypatch.setattr(core, "_cdp_ws", fake_ws)
+
+    result = core.cdp_find_session(endpoints="chrome=http://127.0.0.1:9222")
+
+    assert result["ok"] is True
+    assert result["found"] is True
+    assert result["selected"]["hasSessionCookie"] is True
+    assert result["selected"]["sessionCookieNames"] == ["li_at"]
+    assert result["selected"]["matchingTabCount"] == 1
+    assert "secret-auth-cookie" not in json.dumps(result)
 
 
 def test_chrome_routes_dry_run_without_chrome(monkeypatch):

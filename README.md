@@ -58,6 +58,7 @@ so it's the most reliable way to genuinely control a Chrome-family browser on a 
 Chrome-family only — for browser-agnostic GUI control use `browser://kvm`.
 
 - `browser://cdp/session/command/launch` `{browser?, url?, headless?}`
+- `browser://cdp/session/query/find` `{domain?, endpoints?, debug_ports?}` — read-only session probe; reports matching tabs and cookie names, never cookie values
 - `browser://cdp/page/command/navigate` `{url}` · `browser://cdp/page/query/tabs`
 - `browser://cdp/page/query/eval` `{expr}` — run JS, returns the value
 - `browser://cdp/page/query/screenshot` — PNG of the live page
