@@ -165,6 +165,19 @@ def test_cdp_launch_on_wayland_uses_explicit_ozone_platform(monkeypatch):
     assert "--ozone-platform-hint=auto" not in seen["args"]
 
 
+def test_cdp_navigate_reuses_current_tab_not_new_tab(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core, "_cdp_pages", lambda: [{"webSocketDebuggerUrl": "ws://x"}])
+    calls = {}
+    monkeypatch.setattr(core, "_cdp_cmd", lambda m, p=None: calls.setdefault("nav", (m, p)) or {"result": {}})
+    monkeypatch.setattr(core, "cdp_eval", lambda expr: {"ok": True, "value": "complete"})
+    # /json/new must NOT be hit when a tab already exists
+    monkeypatch.setattr(core, "_cdp_http", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not open a new tab")))
+    res = core.cdp_navigate(url="https://example.com")
+    assert res["ok"] is True and res["via"] == "ws-current-tab" and res["readyState"] == "complete"
+    assert calls["nav"][0] == "Page.navigate"
+
+
 def test_cdp_click_without_running_chrome_is_graceful(monkeypatch):
     from urirun_connector_browser_control import core
     monkeypatch.setattr(core, "_cdp_pages", lambda: [])  # no debugger up

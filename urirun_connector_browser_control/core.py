@@ -717,14 +717,36 @@ def cdp_tabs() -> dict[str, Any]:
             "tabs": [{"id": t["id"], "title": t.get("title"), "url": t.get("url")} for t in _cdp_pages()]}
 
 
-@CDP.handler("page/command/navigate", isolated=True, meta={"label": "Open/navigate a tab"})
-def cdp_navigate(url: str) -> dict[str, Any]:
-    try:
-        r = _cdp_http(f"/json/new?{urllib.parse.quote(url, safe='')}", method="PUT")
-        return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "via": "http", "id": r.get("id"), "url": r.get("url")}
-    except Exception:  # noqa: BLE001 - /json/new disabled → navigate current tab over WS
+@CDP.handler("page/command/navigate", isolated=True, meta={"label": "Navigate the current tab (open one if none)"})
+def cdp_navigate(url: str, wait_ready: bool = True, timeout: float = 10.0) -> dict[str, Any]:
+    """Navigate the CURRENT tab to ``url`` (Page.navigate over WS). Reusing the existing
+    tab — instead of opening a new one with /json/new — is essential: click/fill/eval all
+    act on ``_cdp_pages()[0]``, so a fresh tab would split focus and they'd target the wrong
+    page. Only opens a tab when the browser has none yet. With ``wait_ready`` it polls until
+    document.readyState=='complete' so the next step doesn't race page load."""
+    pages = _cdp_pages()
+    if pages:
         r = _cdp_cmd("Page.navigate", {"url": url})
-        return {"ok": "error" not in r, "connector": CONNECTOR_ID, "target": "cdp", "via": "ws", "result": r.get("result")}
+        if "error" in r:
+            return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "via": "ws-current-tab",
+                    "error": r.get("error")}
+        via = "ws-current-tab"
+    else:
+        try:
+            _cdp_http(f"/json/new?{urllib.parse.quote(url, safe='')}", method="PUT")
+            via = "http-new-tab"
+        except Exception:  # noqa: BLE001 - /json/new disabled and no tab yet
+            return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp",
+                    "error": "no tab to navigate and /json/new is disabled (launch first)"}
+    ready = None
+    if wait_ready:
+        deadline = time.time() + float(timeout)
+        while time.time() < deadline:
+            ready = cdp_eval(expr="document.readyState").get("value")
+            if ready == "complete":
+                break
+            time.sleep(0.2)
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "via": via, "url": url, "readyState": ready}
 
 
 @CDP.handler("page/query/eval", isolated=True, meta={"label": "Run JS in the page (click/fill/read)"})
