@@ -101,6 +101,8 @@ def test_manifest_and_bindings_share_routes():
         "browser://cdp/session/query/find",
         "browser://cdp/page/query/tabs",
         "browser://cdp/page/command/navigate",
+        "browser://cdp/page/command/click",
+        "browser://cdp/page/command/fill",
         "browser://cdp/page/query/eval",
         "browser://cdp/page/query/screenshot",
     }
@@ -143,6 +145,77 @@ def test_cdp_eval_without_running_chrome_is_graceful(monkeypatch):
     monkeypatch.setattr(core, "_cdp_pages", lambda: [])
     res = core.cdp_eval(expr="document.title")
     assert res["ok"] is False and "no page target" in res["error"]
+
+
+def test_cdp_launch_on_wayland_uses_explicit_ozone_platform(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core.shutil, "which", lambda n: "/usr/bin/google-chrome")
+    monkeypatch.setattr(core, "_session_env",
+                        lambda: {"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000"})
+    seen = {}
+    class _P:
+        pid = 123
+        def poll(self): return None
+    monkeypatch.setattr(core.subprocess, "Popen", lambda args, **k: (seen.__setitem__("args", args), _P())[1])
+    monkeypatch.setattr(core, "_cdp_http", lambda *a, **k: {"Browser": "Chrome/149"})
+    res = core.cdp_launch(browser="chrome", url="about:blank", headless=False)
+    assert res["ok"] is True
+    # the explicit selector, NOT the hint variant which picks X11 on a pure-Wayland node
+    assert "--ozone-platform=wayland" in seen["args"]
+    assert "--ozone-platform-hint=auto" not in seen["args"]
+
+
+def test_cdp_click_without_running_chrome_is_graceful(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core, "_cdp_pages", lambda: [])  # no debugger up
+    res = core.cdp_click(text="Post", role="button")
+    assert res["ok"] is False
+    assert res["target"] == "cdp"
+    assert "no page target" in res["error"]
+
+
+def test_cdp_click_requires_a_target(monkeypatch):
+    from urirun_connector_browser_control import core
+    res = core.cdp_click()
+    assert res["ok"] is False and "required" in res["error"]
+
+
+def test_cdp_click_reports_element_not_found(monkeypatch):
+    from urirun_connector_browser_control import core
+    # element-not-found is signalled by the in-page JS returning {ok:false,...} via cdp_eval
+    monkeypatch.setattr(core, "cdp_eval",
+                        lambda expr: {"ok": True, "value": {"ok": False, "error": "element not found {...}"}})
+    res = core.cdp_click(text="Nope", role="button")
+    assert res["ok"] is False
+    assert res["strategy"] == "cdp-dom"
+    assert "not found" in res["error"]
+    assert res["target_"] == {"text": "Nope", "role": "button", "selector": ""}
+
+
+def test_cdp_click_dispatches_dom_click(monkeypatch):
+    from urirun_connector_browser_control import core
+    seen = {}
+    def fake_eval(expr):
+        seen["expr"] = expr
+        return {"ok": True, "value": {"ok": True, "action": "click", "tag": "BUTTON", "name": "Post"}}
+    monkeypatch.setattr(core, "cdp_eval", fake_eval)
+    res = core.cdp_click(text="Post", role="button")
+    assert res["ok"] is True and res["strategy"] == "cdp-dom" and res["tag"] == "BUTTON"
+    # the target text/role are embedded as JS string literals (json-encoded), so no injection
+    assert '"Post"' in seen["expr"] and '"button"' in seen["expr"] and "el.click()" in seen["expr"]
+
+
+def test_cdp_fill_handles_contenteditable_path(monkeypatch):
+    from urirun_connector_browser_control import core
+    seen = {}
+    def fake_eval(expr):
+        seen["expr"] = expr
+        return {"ok": True, "value": {"ok": True, "action": "fill", "tag": "DIV", "isContentEditable": True}}
+    monkeypatch.setattr(core, "cdp_eval", fake_eval)
+    res = core.cdp_fill(value="Hello świat", role="textbox")
+    assert res["ok"] is True and res["isContentEditable"] is True
+    # value is json-encoded (unicode-safe) and the editor path uses insertText
+    assert "insertText" in seen["expr"] and "Hello" in seen["expr"]
 
 
 def test_cdp_find_session_reports_cookie_names_not_values(monkeypatch):

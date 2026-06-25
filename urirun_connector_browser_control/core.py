@@ -449,7 +449,12 @@ def _cdp_http_base(base: str, path: str, method: str = "GET", timeout: float = 5
 
 
 def _cdp_pages() -> list[dict]:
-    return [t for t in _cdp_http("/json") if t.get("type") == "page"]
+    # Debug port down (no session launched) → no pages, so callers report the actionable
+    # "no page target (launch first)" rather than leaking an opaque connection error.
+    try:
+        return [t for t in _cdp_http("/json") if t.get("type") == "page"]
+    except Exception:  # noqa: BLE001 - connection refused / timeout / bad JSON
+        return []
 
 
 def _cdp_ws(ws_url: str, messages: list[dict]) -> list[dict]:
@@ -647,8 +652,11 @@ def cdp_launch(browser: str = "chrome", url: str = "about:blank", headless: bool
     if headless:
         args.append("--headless=new")
     elif on_wayland:
-        # Without this Chrome targets X11/XWayland (needs DISPLAY) and fails to surface.
-        args.append("--ozone-platform-hint=auto")
+        # Chrome defaults to the X11 ozone backend (needs $DISPLAY) and dies with
+        # "Missing X server or $DISPLAY" on a pure-Wayland node. The *hint* variant
+        # (--ozone-platform-hint=auto) still picks X11 here — only the EXPLICIT
+        # platform selector makes the debug port come up. Verified on node .201.
+        args.append("--ozone-platform=wayland")
     proc = subprocess.Popen([*args, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     for _ in range(40):
         if proc.poll() is not None:  # Chrome exited before the port opened — stop waiting.
@@ -729,6 +737,108 @@ def cdp_eval(expr: str) -> dict[str, Any]:
         return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": res["exceptionDetails"].get("text")}
     val = res.get("result") or {}
     return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "value": val.get("value"), "type": val.get("type")}
+
+
+_CDP_FIND_JS = r"""
+function(text, role, selector) {
+  const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const visible = n => !!(n && n.offsetParent !== null && n.getClientRects().length);
+  const roleOf = n => norm(n.getAttribute && n.getAttribute('role')) ||
+    (n.tagName === 'BUTTON' || (n.tagName === 'INPUT' && /^(submit|button)$/i.test(n.type)) ? 'button'
+     : n.tagName === 'A' ? 'link' : n.tagName.toLowerCase());
+  const nameOf = n => norm(n.getAttribute && (n.getAttribute('aria-label') ||
+    n.getAttribute('title') || n.getAttribute('placeholder'))) || norm(n.innerText || n.value);
+  if (selector) {
+    // LLMs love Playwright-isms like button:has-text('X') / :text('X'), which are NOT
+    // valid CSS — extract the text into a name match and keep the leading tag as a role,
+    // so a bad selector degrades to the (more robust) accessible-name path instead of throwing.
+    const m = selector.match(/:(?:has-)?text\(\s*['"]?([^'")]*)['"]?\s*\)/i);
+    if (m) {
+      text = text || m[1];
+      const tag = (selector.match(/^[a-z0-9]+/i) || [])[0];
+      if (tag && !role) role = tag.toLowerCase() === 'a' ? 'link' : tag.toLowerCase();
+      selector = '';
+    }
+    if (selector) { try { const el = document.querySelector(selector); if (el) return el; } catch (e) {} }
+  }
+  const want = norm(text), wantRole = norm(role);
+  const pool = Array.from(document.querySelectorAll(
+    'button, a, input, textarea, select, [role], [contenteditable], [aria-label], [tabindex]'));
+  const roleOk = n => !wantRole || roleOf(n) === wantRole;
+  const exact = pool.filter(n => roleOk(n) && visible(n) && (!want || nameOf(n) === want));
+  if (exact.length) return exact[0];
+  const loose = pool.filter(n => roleOk(n) && visible(n) && want && nameOf(n).includes(want));
+  return loose[0] || null;
+}
+"""
+
+
+def _cdp_dom(action: str, *, text: str = "", role: str = "", selector: str = "", value: str = "") -> dict[str, Any]:
+    """Find one element by accessible-name(text)/role/CSS-selector and act on it via the DOM.
+
+    Coordinate-free and role/name-exact, so it is immune to the OCR failure modes of the
+    ``kvm``/``ui`` pixel path (dark-theme misreads, a label matching instead of its button).
+    ``action`` is ``click`` or ``fill`` (fill handles React-controlled inputs and
+    contenteditable rich editors, e.g. the LinkedIn post box)."""
+    body = {
+        "click": "el.scrollIntoView({block:'center'}); el.click();"
+                 " return {ok:true, action:'click', tag:el.tagName, name:(el.innerText||el.value||'').slice(0,80)};",
+        "fill": "el.focus();"
+                " if (el.isContentEditable) {"
+                "   const sel=window.getSelection(), r=document.createRange();"
+                "   r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);"
+                "   document.execCommand('insertText', false, VALUE);"
+                "   el.dispatchEvent(new InputEvent('input',{bubbles:true}));"
+                " } else {"
+                "   const set=Object.getOwnPropertyDescriptor(el.__proto__,'value');"
+                "   set && set.set ? set.set.call(el, VALUE) : (el.value = VALUE);"
+                "   el.dispatchEvent(new Event('input',{bubbles:true}));"
+                "   el.dispatchEvent(new Event('change',{bubbles:true}));"
+                " }"
+                " return {ok:true, action:'fill', tag:el.tagName, isContentEditable:!!el.isContentEditable};",
+    }[action]
+    expr = (
+        f"(function(){{"
+        f"  const find = {_CDP_FIND_JS};"
+        f"  const el = find({json.dumps(text)}, {json.dumps(role)}, {json.dumps(selector)});"
+        f"  if (!el) return {{ok:false, error:'element not found '"
+        f"    + JSON.stringify({{text:{json.dumps(text)}, role:{json.dumps(role)}, selector:{json.dumps(selector)}}})}};"
+        f"  const VALUE = {json.dumps(value)};"
+        f"  {body}"
+        f"}})()"
+    )
+    ev = cdp_eval(expr=expr)
+    if not ev.get("ok"):  # CDP transport / no page target / JS exception
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "strategy": "cdp-dom",
+                "error": ev.get("error") or "cdp eval failed"}
+    val = ev.get("value")
+    if isinstance(val, dict) and not val.get("ok"):  # element genuinely not found
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "strategy": "cdp-dom",
+                "error": (val or {}).get("error") or "element not found",
+                "target_": {"text": text, "role": role, "selector": selector}}
+    return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "strategy": "cdp-dom", **(val or {})}
+
+
+@CDP.handler("page/command/click", isolated=True,
+             meta={"label": "Click a page element by text/role/selector (DOM, OCR-free)"})
+def cdp_click(text: str = "", role: str = "", selector: str = "") -> dict[str, Any]:
+    """Click a browser element by its accessible name (visible label), ARIA role, or CSS
+    selector — through the DOM, so no screenshot/OCR and no coordinates. Prefer this over
+    ``kvm``/``ui/command/click`` whenever the target is web content in a CDP session."""
+    if not (text or role or selector):
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "a text/role/selector is required"}
+    return _cdp_dom("click", text=text, role=role, selector=selector)
+
+
+@CDP.handler("page/command/fill", isolated=True,
+             meta={"label": "Type into a page field by text/role/selector (DOM, OCR-free)"})
+def cdp_fill(value: str, text: str = "", role: str = "", selector: str = "") -> dict[str, Any]:
+    """Set a browser field's value by accessible name / role / CSS selector — through the
+    DOM, handling React-controlled inputs and contenteditable rich editors (e.g. the
+    LinkedIn post box). Prefer over ``kvm``/``input/command/type`` for web content."""
+    if not (text or role or selector):
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "a text/role/selector is required"}
+    return _cdp_dom("fill", text=text, role=role, selector=selector, value=value)
 
 
 @CDP.handler("page/query/screenshot", isolated=True, meta={"label": "Screenshot the live page (CDP)"})
