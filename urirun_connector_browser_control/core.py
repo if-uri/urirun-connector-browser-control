@@ -64,6 +64,29 @@ def _has_display() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def _session_env() -> dict:
+    """A child-process env that can reach the live graphical session. A urirun node
+    process usually has no WAYLAND_DISPLAY/DBUS pointing at the user's session, so a
+    headful Chrome launched from it never connects to a compositor and its debug port
+    never comes up. Discover the live Wayland socket + session bus under
+    XDG_RUNTIME_DIR (same trick as the kvm connector's portal/clipboard paths)."""
+    env = os.environ.copy()
+    xrd = env.get("XDG_RUNTIME_DIR") or (f"/run/user/{os.getuid()}" if hasattr(os, "getuid") else "")
+    if not xrd:
+        return env
+    env["XDG_RUNTIME_DIR"] = xrd
+    if not env.get("WAYLAND_DISPLAY"):
+        try:
+            socks = sorted(n for n in os.listdir(xrd)
+                           if n.startswith("wayland-") and not n.endswith(".lock"))
+            if socks:
+                env["WAYLAND_DISPLAY"] = socks[0]
+        except OSError:
+            pass
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path={xrd}/bus")
+    return env
+
+
 # --- tellmesh integration: reuse ../tellmesh/* handlers as the URI implementation ---
 
 _TM_CTX: dict[str, Any] = {"state": {}, "config": {},
@@ -610,19 +633,38 @@ def cdp_launch(browser: str = "chrome", url: str = "about:blank", headless: bool
     binpath = next((shutil.which(c) for c in ((browser,) if browser != "chrome" else _CDP_CHROME) if shutil.which(c)), None)
     if not binpath:
         return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": f"no Chrome-family browser for {browser!r}"}
+    env = _session_env()
+    on_wayland = bool(env.get("WAYLAND_DISPLAY")) and not env.get("DISPLAY")
+    # A headful Chrome with no compositor to draw on just dies, and the debug port never
+    # opens — report THAT, not the generic "debugger did not come up" 10s later.
+    if not headless and not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
+        return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp",
+                "error": "no DISPLAY/WAYLAND_DISPLAY in the node env and no live Wayland "
+                         "socket under XDG_RUNTIME_DIR — a headful CDP Chrome needs a desktop "
+                         "session (or pass headless=true)"}
     args = [binpath, f"--remote-debugging-port={_CDP_PORT}", "--remote-debugging-address=127.0.0.1",
             "--user-data-dir=/tmp/urirun-cdp-profile", "--no-first-run", "--no-default-browser-check"]
     if headless:
         args.append("--headless=new")
-    proc = subprocess.Popen([*args, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif on_wayland:
+        # Without this Chrome targets X11/XWayland (needs DISPLAY) and fails to surface.
+        args.append("--ozone-platform-hint=auto")
+    proc = subprocess.Popen([*args, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     for _ in range(40):
+        if proc.poll() is not None:  # Chrome exited before the port opened — stop waiting.
+            return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "pid": proc.pid,
+                    "exitCode": proc.returncode, "headless": headless, "onWayland": on_wayland,
+                    "error": f"browser exited (code {proc.returncode}) before the debug port opened — "
+                             "likely no usable display session for a headful launch"}
         try:
             ver = _cdp_http("/json/version")
             return {"ok": True, "connector": CONNECTOR_ID, "target": "cdp", "pid": proc.pid,
                     "debugPort": _CDP_PORT, "browser": ver.get("Browser"), "url": url}
         except Exception:  # noqa: BLE001 - debugger not up yet
             time.sleep(0.25)
-    return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "error": "debugger did not come up", "pid": proc.pid}
+    return {"ok": False, "connector": CONNECTOR_ID, "target": "cdp", "pid": proc.pid,
+            "headless": headless, "onWayland": on_wayland,
+            "error": "debugger did not come up (debug port never opened within 10s)"}
 
 
 @CDP.handler("session/query/find", isolated=True, meta={"label": "Find an existing CDP browser session for a domain"})

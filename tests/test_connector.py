@@ -124,6 +124,19 @@ def test_cdp_launch_without_chrome_is_graceful(monkeypatch):
     assert res["target"] == "cdp"
 
 
+def test_cdp_launch_headful_without_display_reports_real_reason(monkeypatch):
+    from urirun_connector_browser_control import core
+    monkeypatch.setattr(core.shutil, "which", lambda n: "/usr/bin/google-chrome")
+    # no graphical session anywhere: env vars cleared AND no discoverable wayland socket
+    monkeypatch.setattr(core, "_session_env", lambda: {})
+    called = {"popen": False}
+    monkeypatch.setattr(core.subprocess, "Popen", lambda *a, **k: called.__setitem__("popen", True))
+    res = core.cdp_launch(browser="chrome", headless=False)
+    assert res["ok"] is False
+    assert "DISPLAY" in res["error"]  # the real reason, not "debugger did not come up"
+    assert called["popen"] is False   # we never even spawned a doomed headful Chrome
+
+
 def test_cdp_eval_without_running_chrome_is_graceful(monkeypatch):
     from urirun_connector_browser_control import core
     # no debugger up -> _cdp_pages() raises -> _cdp_cmd returns a clean no-target error
