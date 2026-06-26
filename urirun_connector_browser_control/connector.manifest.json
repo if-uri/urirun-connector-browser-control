@@ -41,6 +41,8 @@
     "github": "https://github.com/if-uri"
   },
   "routes": [
+    "browser://cdp/page/command/click",
+    "browser://cdp/page/command/fill",
     "browser://cdp/page/command/navigate",
     "browser://cdp/page/query/eval",
     "browser://cdp/page/query/screenshot",
