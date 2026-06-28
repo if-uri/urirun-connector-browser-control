@@ -32,4 +32,4 @@ where = ["."]
 include = ["urirun_connector_browser_control*"]
 
 [tool.setuptools.package-data]
-urirun_connector_browser_control = ["connector.manifest.json"]
+urirun_connector_browser_control = ["connector.manifest.json", "contracts.json"]
