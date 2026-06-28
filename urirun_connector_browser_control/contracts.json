@@ -1,0 +1,514 @@
+{
+  "contracts": {
+    "system/query/browsers": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": {},
+      "out": {
+        "connector": "const:browser-control",
+        "browsers": "list",
+        "default": "?str",
+        "display": "bool"
+      },
+      "errors": [],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "browsers": [],
+            "default": null,
+            "display": false
+          }
+        }
+      ]
+    },
+    "page/command/open": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "url": "str", "target": "?str", "timeout": "?num" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "str",
+        "url": "str",
+        "executed": "?bool",
+        "backend": "?str"
+      },
+      "errors": ["unreachable", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "url": "https://example.com" },
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "desktop",
+            "url": "https://example.com",
+            "executed": false,
+            "backend": "none",
+            "reason": "Set BROWSER_CONTROL_ENDPOINT or URI_SERVICE_MAP to forward to a noVNC/urirun node. Set BROWSER_CONTROL_ALLOW_LOCAL=1 to open the local host browser."
+          }
+        }
+      ]
+    },
+    "page/command/screenshot": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "url": "?str", "target": "?str", "output": "?str", "timeout": "?num" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "str",
+        "url": "?str",
+        "output": "?str"
+      },
+      "errors": ["unreachable", "precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "url": "https://example.com" },
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "desktop",
+            "url": "https://example.com",
+            "output": "browser-screenshot.png",
+            "executed": false,
+            "backend": "none",
+            "reason": "Set BROWSER_CONTROL_ENDPOINT or URI_SERVICE_MAP to forward screenshots to a browser/noVNC node."
+          }
+        }
+      ]
+    },
+    "page/query/dom": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "url": "?str", "max": "?int" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:chrome",
+        "url": "?str"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "url": "https://example.com" },
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "chrome",
+            "executed": false,
+            "backend": "none",
+            "reason": "no Chrome/Chromium binary found; install one to run headless routes",
+            "url": "https://example.com"
+          }
+        }
+      ]
+    },
+    "page/query/text": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "url": "?str", "max": "?int" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:chrome",
+        "url": "?str"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "url": "https://example.com" },
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "chrome",
+            "executed": false,
+            "backend": "none",
+            "reason": "no Chrome/Chromium binary found; install one to run headless routes",
+            "url": "https://example.com"
+          }
+        }
+      ]
+    },
+    "session/command/launch": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "session/command/close",
+      "inp": { "browser": "?str", "url": "?str", "headless": "?bool" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "enum:kvm|cdp"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "browser": "firefox" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "browser": "firefox",
+            "error": "no binary for browser 'firefox'",
+            "tried": ["firefox", "firefox-esr"]
+          }
+        }
+      ]
+    },
+    "input/command/type": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "text": "str", "enter": "?bool" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "text": "hello" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "no input tool (install ydotool for Wayland, or xdotool for X11)"
+          }
+        }
+      ]
+    },
+    "input/command/hotkey": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "keys": ["str"] },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "keys": ["ctrl", "l"] },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "no input tool (install ydotool/xdotool)"
+          }
+        }
+      ]
+    },
+    "page/command/navigate": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "url": "str", "enter": "?bool", "wait_ready": "?bool", "timeout": "?num" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "enum:kvm|cdp",
+        "url": "?str"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "url": "https://example.com" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "url": "https://example.com",
+            "steps": {
+              "focus": { "ok": false, "connector": "browser-control", "target": "kvm", "error": "no input tool (install ydotool/xdotool)" },
+              "type": { "ok": false, "connector": "browser-control", "target": "kvm", "error": "no input tool (install ydotool for Wayland, or xdotool for X11)" }
+            }
+          }
+        }
+      ]
+    },
+    "input/command/click": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "x": "int", "y": "int", "button": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "x": 100, "y": 200 },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "coordinate click needs xdotool (X11); on Wayland use page/command/click-text"
+          }
+        }
+      ]
+    },
+    "page/command/click-text": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "text": "str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "text": "Login" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "click-text needs tellmesh urikvm (OCR) or tesseract on the node"
+          }
+        }
+      ]
+    },
+    "screen/query/capture": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "monitor": "?int" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "no working screenshot tool (grim/import/scrot/maim/gnome-screenshot)"
+          }
+        }
+      ]
+    },
+    "screen/query/inspect": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "monitor": "?int", "contains": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm",
+        "capture": "obj",
+        "ocr": "obj",
+        "contains": "str",
+        "matched": "bool"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "capture": { "ok": false, "error": "no working screenshot tool (grim/import/scrot/maim/gnome-screenshot)" },
+            "ocr": { "ok": false, "error": "no screenshot path for OCR" },
+            "contains": "",
+            "matched": false
+          }
+        }
+      ]
+    },
+    "session/command/close": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": true,
+      "inverseRoute": "session/command/launch",
+      "inp": { "hard": "?bool", "browser": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:kvm"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "kvm",
+            "error": "no input tool (install ydotool/xdotool)"
+          }
+        }
+      ]
+    },
+    "session/query/find": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": {
+        "domain": "?str",
+        "url": "?str",
+        "endpoints": "?str",
+        "debug_ports": "?str",
+        "cookie_names": "?str"
+      },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp",
+        "mode": "const:read-only",
+        "domain": "str",
+        "url": "str",
+        "found": "bool",
+        "selected": "?obj",
+        "candidates": "list",
+        "safety": "str"
+      },
+      "errors": [],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "cdp",
+            "mode": "read-only",
+            "domain": "linkedin.com",
+            "url": "https://www.linkedin.com/",
+            "found": false,
+            "selected": null,
+            "candidates": [
+              {
+                "ok": false,
+                "label": "cdp-9222",
+                "endpoint": "http://127.0.0.1:9222",
+                "reachable": false,
+                "error": "<urlopen error [Errno 111] Connection refused>"
+              }
+            ],
+            "safety": "does not launch, navigate, type, click, publish, or expose cookie values"
+          }
+        }
+      ]
+    },
+    "page/query/tabs": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": {},
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp",
+        "tabs": "list"
+      },
+      "errors": [],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": true,
+            "connector": "browser-control",
+            "target": "cdp",
+            "tabs": []
+          }
+        }
+      ]
+    },
+    "page/query/eval": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "expr": "str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "expr": "document.title" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "cdp",
+            "error": "no page target (launch first)"
+          }
+        }
+      ]
+    },
+    "page/command/click": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "text": "?str", "role": "?str", "selector": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "text": "Login" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "cdp",
+            "strategy": "cdp-dom",
+            "error": "no page target (launch first)"
+          }
+        }
+      ]
+    },
+    "page/command/fill": {
+      "version": "v1",
+      "effect": "command",
+      "reversible": false,
+      "inp": { "value": "str", "text": "?str", "role": "?str", "selector": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": { "value": "hello", "selector": "#search" },
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "cdp",
+            "strategy": "cdp-dom",
+            "error": "no page target (launch first)"
+          }
+        }
+      ]
+    },
+    "page/query/screenshot": {
+      "version": "v1",
+      "effect": "query",
+      "reversible": false,
+      "inp": { "output": "?str" },
+      "out": {
+        "connector": "const:browser-control",
+        "target": "const:cdp"
+      },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [
+        {
+          "payload": {},
+          "result": {
+            "ok": false,
+            "connector": "browser-control",
+            "target": "cdp",
+            "error": "no screenshot data"
+          }
+        }
+      ]
+    }
+  },
+  "wires": []
+}
